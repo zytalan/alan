@@ -1,0 +1,45 @@
+# Curated sample: the lithium-ion battery industry chain.
+# A list of subgraph documents; loading them stitches together a multi-level
+# chain (battery -> cathode -> lithium, and battery -> EV -> Tesla) so you can
+# try depth-2 traversal and path-finding without an API key.
+
+- name: lithium-ion battery
+  type: product
+  industries: [battery manufacturing, energy storage]
+  upstream:
+    - {name: cathode, type: product}
+    - {name: anode, type: product}
+    - {name: electrolyte, type: material}
+    - {name: copper, type: material, via: current collector}
+  downstream:
+    - {name: electric vehicle, type: product}
+    - {name: smartphone, type: product}
+    - {name: grid energy storage, type: product}
+  companies:
+    - {name: CATL, industry: battery manufacturing}
+    - {name: LG Energy Solution, industry: battery manufacturing}
+    - {name: Panasonic, industry: battery manufacturing}
+    - {name: BYD, industry: battery manufacturing}
+
+- name: cathode
+  type: product
+  industries: [battery materials]
+  upstream:
+    - {name: lithium, type: material}
+    - {name: cobalt, type: material}
+    - {name: nickel, type: material}
+  companies:
+    - {name: Umicore, industry: battery materials}
+
+- name: anode
+  type: product
+  industries: [battery materials]
+  upstream:
+    - {name: graphite, type: material}
+
+- name: electric vehicle
+  type: product
+  industries: [automotive]
+  companies:
+    - {name: Tesla, industry: automotive}
+    - {name: BYD, industry: automotive}

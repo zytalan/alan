@@ -1,0 +1,36 @@
+[project]
+name = "industrychain"
+version = "0.1.0"
+description = "Map upstream/downstream industry-chain connections between products, materials, industries and companies."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5",
+    "networkx>=3.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "anthropic>=0.40",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+ic = "industrychain.cli:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["industrychain", "industrychain.providers"]
+
+[tool.setuptools.package-data]
+industrychain = ["data/*.yaml"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
