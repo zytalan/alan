@@ -21,4 +21,6 @@ def test_to_html_writes_self_contained_page(tmp_path):
     assert "vis-network" in html              # CDN script reference present
     assert "new vis.Network" in html
     assert "lithium-ion battery" in html      # a node label made it into the page
-    assert "vis.DataSet([" in html            # node/edge datasets injected as JSON
+    assert "const rawNodes = [" in html       # node data injected as JSON
+    assert "function chainSet" in html        # click-to-highlight interactivity
+    assert "applyFilters" in html             # type filtering
