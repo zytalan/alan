@@ -1,0 +1,51 @@
+# Curated sample: the smartphone / semiconductor chain.
+# Deliberately shares the "smartphone", "lithium-ion battery" and "copper" nodes
+# with the battery sample, so loading both stitches the two industries into one
+# graph (e.g. `ic path "silicon" "lithium"` crosses from chips to battery metals).
+
+- name: smartphone
+  type: product
+  industries: [consumer electronics]
+  upstream:
+    - {name: system-on-chip, type: product, via: processor}
+    - {name: lithium-ion battery, type: product, via: power}
+    - {name: OLED display, type: product}
+    - {name: printed circuit board, type: product}
+  companies:
+    - {name: Apple, industry: consumer electronics}
+    - {name: Samsung Electronics, industry: consumer electronics}
+
+- name: system-on-chip
+  type: product
+  industries: [semiconductors]
+  upstream:
+    - {name: silicon wafer, type: product}
+    - {name: photoresist, type: material}
+    - {name: copper, type: material, via: interconnect}
+  downstream:
+    - {name: laptop, type: product}
+  companies:
+    - {name: TSMC, industry: semiconductor foundry}
+    - {name: Qualcomm, industry: semiconductors}
+    - {name: Samsung Electronics, industry: semiconductors}
+
+- name: silicon wafer
+  type: product
+  industries: [semiconductors]
+  upstream:
+    - {name: polysilicon, type: material}
+
+- name: polysilicon
+  type: material
+  industries: [semiconductors]
+  upstream:
+    - {name: silicon, type: material}
+  companies:
+    - {name: Wacker Chemie, industry: semiconductors}
+
+- name: OLED display
+  type: product
+  industries: [display panels]
+  companies:
+    - {name: Samsung Display, industry: display panels}
+    - {name: LG Display, industry: display panels}

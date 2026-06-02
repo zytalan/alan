@@ -31,7 +31,7 @@ app = typer.Typer(
 console = Console()
 
 DEFAULT_DB = os.environ.get("IC_DB", "data/industrychain.db")
-SAMPLE_FILE = Path(__file__).parent / "data" / "sample_lithium_battery.yaml"
+SAMPLE_DIR = Path(__file__).parent / "data"
 
 _state = {"db": DEFAULT_DB}
 
@@ -91,13 +91,18 @@ def load(path: Path = typer.Argument(..., help="A curated subgraph file (JSON or
 
 @app.command("load-sample")
 def load_sample() -> None:
-    """Load the bundled lithium-ion battery example (no API key required)."""
+    """Load all bundled sample chains (no API key required)."""
     graph = _graph()
-    subgraph = load_file(SAMPLE_FILE)
-    graph.ingest(subgraph)
+    files = sorted(SAMPLE_DIR.glob("*.yaml"))
+    nodes = edges = 0
+    for f in files:
+        subgraph = load_file(f)
+        graph.ingest(subgraph)
+        nodes += len(subgraph.nodes)
+        edges += len(subgraph.edges)
     console.print(
-        f"[green]Loaded sample[/green]: {len(subgraph.nodes)} nodes, {len(subgraph.edges)} edges. "
-        "Try `ic upstream 'lithium-ion battery'`."
+        f"[green]Loaded {len(files)} sample chains[/green]: ingested {nodes} nodes, {edges} edges. "
+        'Try `ic analyze` or `ic path "silicon" "lithium"`.'
     )
 
 
@@ -108,6 +113,26 @@ def load_sample() -> None:
 def show(name: str) -> None:
     """Show a node and its immediate connections."""
     _print_overview(_graph(), name)
+
+
+@app.command()
+def search(
+    query: str,
+    type: NodeType = typer.Option(None, "--type", "-t", help="Limit to a node type."),
+) -> None:
+    """Find nodes whose name or alias contains QUERY."""
+    graph = _graph()
+    matches = graph.search(query, type)
+    if not matches:
+        console.print(f"[yellow]No matches for '{query}'.[/yellow]")
+        return
+    table = Table(title=f"Search '{query}' ({len(matches)} matches)")
+    table.add_column("name")
+    table.add_column("type")
+    table.add_column("id", style="dim")
+    for node in matches:
+        table.add_row(node.name, node.type.value, node.id)
+    console.print(table)
 
 
 @app.command()

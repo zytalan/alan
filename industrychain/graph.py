@@ -84,6 +84,19 @@ class IndustryGraph:
         matches.sort(key=lambda n: _RESOLVE_ORDER.get(n.type, 9))
         return matches[0]
 
+    def search(self, query: str, type: NodeType | None = None) -> list[Node]:
+        """Find nodes whose name or alias contains ``query`` (case-insensitive)."""
+        needle = query.strip().lower()
+        matches: list[Node] = []
+        for node in self.store.nodes():
+            if type is not None and node.type != type:
+                continue
+            haystacks = [node.name.lower(), *(a.lower() for a in node.aliases)]
+            if any(needle in h for h in haystacks):
+                matches.append(node)
+        matches.sort(key=lambda n: (n.type.value, n.name))
+        return matches
+
     # ---- traversal -------------------------------------------------------
     def upstream(self, node_id: str, depth: int = 2) -> list[Hop]:
         """Inputs that go into making this node (follows INPUT_TO backwards)."""
