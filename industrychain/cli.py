@@ -22,6 +22,7 @@ from .graph import Hop, IndustryGraph
 from .models import NodeType, Source
 from .providers.ai import AIProvider, build_prompt
 from .providers.curated import load_file
+from .providers.wikidata import WikidataProvider
 from .store import SQLiteStore
 
 app = typer.Typer(
@@ -80,6 +81,30 @@ def expand(
     console.print(
         f"[green]Ingested[/green] {len(subgraph.nodes)} nodes, "
         f"{len(subgraph.edges)} edges for [bold]{name}[/bold] (depth {depth})."
+    )
+    _print_overview(graph, name)
+
+
+@app.command()
+def fetch(
+    name: str,
+    type: NodeType = typer.Option(NodeType.PRODUCT, "--type", "-t", help="Entity type."),
+) -> None:
+    """Fetch NAME's connections from Wikidata (external source) and store them."""
+    graph = _graph()
+    provider = WikidataProvider()
+    try:
+        subgraph = provider.expand(name, type)
+    except Exception as exc:  # network / lookup failures
+        console.print(f"[red]Wikidata fetch failed:[/red] {exc}")
+        raise typer.Exit(1)
+    if not subgraph.edges:
+        console.print(f"[yellow]Wikidata had no chain connections for '{name}'.[/yellow]")
+        return
+    graph.ingest(subgraph)
+    console.print(
+        f"[green]Fetched[/green] {len(subgraph.nodes)} nodes, {len(subgraph.edges)} edges "
+        f"for [bold]{name}[/bold] from Wikidata."
     )
     _print_overview(graph, name)
 

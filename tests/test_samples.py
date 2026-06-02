@@ -21,10 +21,13 @@ def test_samples_interconnect_across_domains():
 
     chain = [n.name for n in g.path(silicon.id, lithium.id)]
     assert chain and chain[0] == "silicon" and chain[-1] == "lithium"
-    # the path must bridge the semiconductor side and the battery side; both of
-    # these are cut vertices on any silicon -> lithium route
-    assert "system-on-chip" in chain
+    # silicon is purely semiconductor-side and lithium purely battery-side, so any
+    # connecting path proves the chains interlink. cathode (lithium's only
+    # neighbour) and lithium-ion battery are the guaranteed cut vertices into the
+    # battery cluster, whichever of the several equal-length routes is returned.
     assert "lithium-ion battery" in chain
+    assert "cathode" in chain
+    assert len(chain) >= 5
 
 
 def test_search_finds_by_substring():
