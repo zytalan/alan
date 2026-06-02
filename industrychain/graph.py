@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import networkx as nx
 
-from .models import Edge, EdgeType, Node, NodeType, slugify
+from .models import Edge, EdgeType, Node, NodeType, Source, slugify
 from .providers.base import SubGraph
 from .store import GraphStore
 
@@ -96,6 +96,23 @@ class IndustryGraph:
                 matches.append(node)
         matches.sort(key=lambda n: (n.type.value, n.name))
         return matches
+
+    # ---- curation --------------------------------------------------------
+    def verify(self, node_id: str, verified: bool = True) -> None:
+        """Mark a node as human-verified (curated/trusted)."""
+        self.store.mark_node_verified(node_id, verified=verified)
+
+    def forget(self, node_id: str) -> int:
+        """Delete a node and its edges; returns the number of edges removed."""
+        return self.store.delete_node(node_id)
+
+    def unverified(self, source: Source | None = None) -> list[Node]:
+        """Nodes that still need a human check, lowest confidence first."""
+        pending = [n for n in self.store.nodes() if not n.provenance.verified]
+        if source is not None:
+            pending = [n for n in pending if n.provenance.source == source]
+        pending.sort(key=lambda n: (n.provenance.confidence, n.type.value, n.name))
+        return pending
 
     # ---- traversal -------------------------------------------------------
     def upstream(self, node_id: str, depth: int = 2) -> list[Hop]:

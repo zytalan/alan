@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .merge import merge_edges, merge_nodes
-from .models import Edge, EdgeType, Node, NodeType, Provenance, Source
+from .models import Edge, EdgeType, Node, NodeType, Provenance, Source, utcnow
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS nodes (
@@ -82,6 +82,14 @@ class GraphStore(ABC):
 
     @abstractmethod
     def find_nodes(self, name: str | None = None, type: NodeType | None = None) -> list[Node]: ...
+
+    @abstractmethod
+    def mark_node_verified(
+        self, node_id: str, verified: bool = True, confidence: float | None = None
+    ) -> None: ...
+
+    @abstractmethod
+    def delete_node(self, node_id: str) -> int: ...
 
     def close(self) -> None:  # pragma: no cover - trivial
         pass
@@ -198,6 +206,27 @@ class SQLiteStore(GraphStore):
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         return [_node_from_row(r) for r in self.conn.execute(sql, params)]
+
+    def mark_node_verified(
+        self, node_id: str, verified: bool = True, confidence: float | None = None
+    ) -> None:
+        sets = ["verified=?", "updated_at=?"]
+        params: list = [1 if verified else 0, utcnow().isoformat()]
+        if confidence is not None:
+            sets.append("confidence=?")
+            params.append(confidence)
+        params.append(node_id)
+        self.conn.execute(f"UPDATE nodes SET {', '.join(sets)} WHERE id=?", params)
+        self.conn.commit()
+
+    def delete_node(self, node_id: str) -> int:
+        """Delete a node and every edge touching it; returns the edge count removed."""
+        removed = self.conn.execute(
+            "DELETE FROM edges WHERE src=? OR dst=?", (node_id, node_id)
+        ).rowcount
+        self.conn.execute("DELETE FROM nodes WHERE id=?", (node_id,))
+        self.conn.commit()
+        return removed
 
     def close(self) -> None:
         self.conn.close()

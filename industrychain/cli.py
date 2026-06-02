@@ -18,7 +18,7 @@ from . import analyze as analyze_mod
 from . import export as export_mod
 from . import viz
 from .graph import Hop, IndustryGraph
-from .models import NodeType
+from .models import NodeType, Source
 from .providers.ai import AIProvider
 from .providers.curated import load_file
 from .store import SQLiteStore
@@ -279,6 +279,65 @@ def analyze(top: int = typer.Option(5, "--top", "-n", help="Rows to show per tab
     for i, r in enumerate(companies, 1):
         t3.add_row(str(i), r.node.name, str(r.score), r.detail)
     console.print(t3)
+
+
+# --------------------------------------------------------------------------
+# Curation commands (Phase 3): correct the data and lock in trusted facts
+# --------------------------------------------------------------------------
+@app.command()
+def verify(
+    name: str,
+    type: NodeType = typer.Option(None, "--type", "-t"),
+    unverify: bool = typer.Option(False, "--unverify", help="Clear the verified flag instead."),
+) -> None:
+    """Mark a node as human-verified (or --unverify to clear it)."""
+    graph = _graph()
+    node = _resolve_or_exit(graph, name, type)
+    graph.verify(node.id, verified=not unverify)
+    state = "unverified" if unverify else "[green]verified[/green]"
+    console.print(f"Marked [bold]{node.name}[/bold] ({node.type.value}) as {state}.")
+
+
+@app.command()
+def forget(
+    name: str,
+    type: NodeType = typer.Option(None, "--type", "-t"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+) -> None:
+    """Delete a node and all of its connections from the graph."""
+    graph = _graph()
+    node = _resolve_or_exit(graph, name, type)
+    if not yes:
+        typer.confirm(f"Delete '{node.name}' ({node.type.value}) and its connections?", abort=True)
+    removed = graph.forget(node.id)
+    console.print(f"Removed [bold]{node.name}[/bold] and {removed} edge(s).")
+
+
+@app.command()
+def review(
+    limit: int = typer.Option(20, "--limit", "-n"),
+    all_sources: bool = typer.Option(False, "--all", help="Include non-AI sources too."),
+) -> None:
+    """List facts that still need a human check (unverified), lowest confidence first."""
+    graph = _graph()
+    source = None if all_sources else Source.AI
+    pending = graph.unverified(source=source)
+    if not pending:
+        console.print("[green]Nothing pending review - everything is verified.[/green]")
+        return
+    table = Table(title=f"Needs review ({len(pending)} unverified, lowest confidence first)")
+    table.add_column("name")
+    table.add_column("type")
+    table.add_column("source")
+    table.add_column("confidence", justify="right")
+    for node in pending[:limit]:
+        prov = node.provenance
+        table.add_row(node.name, node.type.value, prov.source.value, f"{prov.confidence:.2f}")
+    console.print(table)
+    if len(pending) > limit:
+        console.print(
+            f"[dim]...and {len(pending) - limit} more. Verify with `ic verify <name>`.[/dim]"
+        )
 
 
 # --------------------------------------------------------------------------
