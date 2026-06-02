@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from . import export as export_mod
+from . import viz
 from .graph import Hop, IndustryGraph
 from .models import NodeType
 from .providers.ai import AIProvider
@@ -170,6 +171,33 @@ def export(
     console.print(
         f"[green]Wrote[/green] {out}  ({sub.number_of_nodes()} nodes, {sub.number_of_edges()} edges)"
     )
+
+
+@app.command()
+def visualize(
+    name: str = typer.Argument(None, help="Entity to centre on; omit to render the whole graph."),
+    depth: int = typer.Option(2, "--depth", "-d"),
+    out: Path = typer.Option(None, "--out", "-o", help="Output .html path."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the result in a browser."),
+) -> None:
+    """Render an interactive HTML view of the industry chain (opens in a browser)."""
+    graph = _graph()
+    if name:
+        node = _resolve_or_exit(graph, name)
+        sub = graph.chain_subgraph(node.id, depth=depth)
+        title = f"Industry chain: {node.name}"
+        default_out = f"{node.id.replace(':', '_')}.html"
+    else:
+        sub = graph.to_networkx()
+        title = "Industry chain graph"
+        default_out = "industrychain.html"
+    out = out or Path(default_out)
+    viz.to_html(sub, out, title=title)
+    console.print(
+        f"[green]Wrote[/green] {out}  ({sub.number_of_nodes()} nodes, {sub.number_of_edges()} edges)"
+    )
+    if open_browser:
+        typer.launch(str(out))
 
 
 @app.command()
