@@ -17,9 +17,10 @@ from rich.tree import Tree
 from . import analyze as analyze_mod
 from . import export as export_mod
 from . import viz
+from .expand import expand_tree
 from .graph import Hop, IndustryGraph
 from .models import NodeType, Source
-from .providers.ai import AIProvider
+from .providers.ai import AIProvider, build_prompt
 from .providers.curated import load_file
 from .store import SQLiteStore
 
@@ -60,20 +61,25 @@ def _resolve_or_exit(graph: IndustryGraph, name: str, type: NodeType | None = No
 def expand(
     name: str,
     type: NodeType = typer.Option(NodeType.PRODUCT, "--type", "-t", help="Entity type."),
+    depth: int = typer.Option(1, "--depth", "-d", help="Levels to expand (>1 = more API calls)."),
     model: str = typer.Option(None, "--model", help="Override the Claude model."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the prompt instead of calling the API."),
 ) -> None:
     """Use Claude to expand NAME into its industry-chain subgraph and store it."""
+    if dry_run:
+        console.print(build_prompt(name, type))
+        return
     graph = _graph()
     provider = AIProvider(model=model) if model else AIProvider()
     try:
-        subgraph = provider.expand(name, type)
+        subgraph = expand_tree(provider, name, type, depth=depth)
     except RuntimeError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1)
     graph.ingest(subgraph)
     console.print(
         f"[green]Ingested[/green] {len(subgraph.nodes)} nodes, "
-        f"{len(subgraph.edges)} edges for [bold]{name}[/bold]."
+        f"{len(subgraph.edges)} edges for [bold]{name}[/bold] (depth {depth})."
     )
     _print_overview(graph, name)
 
