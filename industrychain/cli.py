@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.tree import Tree
 
+from . import analyze as analyze_mod
 from . import export as export_mod
 from . import viz
 from .graph import Hop, IndustryGraph
@@ -214,6 +215,45 @@ def stats() -> None:
         table.add_row(node_type, str(count))
     console.print(table)
     console.print(f"edges: {len(graph.store.edges())}")
+
+
+@app.command()
+def analyze(top: int = typer.Option(5, "--top", "-n", help="Rows to show per table.")) -> None:
+    """Surface insights: supply choke-points, most-connected nodes, key companies."""
+    graph = _graph()
+    if not graph.store.nodes():
+        console.print("[yellow]Graph is empty. Run `ic load-sample` or `ic expand ...` first.[/yellow]")
+        raise typer.Exit(1)
+
+    chokes = analyze_mod.choke_points(graph, top=top)
+    t1 = Table(title="Supply choke-points (inputs by how many downstream products depend on them)")
+    t1.add_column("#", justify="right")
+    t1.add_column("input")
+    t1.add_column("type")
+    t1.add_column("downstream products", justify="right")
+    for i, r in enumerate(chokes, 1):
+        t1.add_row(str(i), r.node.name, r.node.type.value, str(r.score))
+    console.print(t1)
+
+    most_connected = analyze_mod.hubs(graph, top=top)
+    t2 = Table(title="Most connected nodes (total links)")
+    t2.add_column("#", justify="right")
+    t2.add_column("node")
+    t2.add_column("type")
+    t2.add_column("links", justify="right")
+    for i, r in enumerate(most_connected, 1):
+        t2.add_row(str(i), r.node.name, r.node.type.value, str(r.score))
+    console.print(t2)
+
+    companies = analyze_mod.key_companies(graph, top=top)
+    t3 = Table(title="Key companies (number of products made)")
+    t3.add_column("#", justify="right")
+    t3.add_column("company")
+    t3.add_column("products", justify="right")
+    t3.add_column("makes")
+    for i, r in enumerate(companies, 1):
+        t3.add_row(str(i), r.node.name, str(r.score), r.detail)
+    console.print(t3)
 
 
 # --------------------------------------------------------------------------
