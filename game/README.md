@@ -40,6 +40,25 @@ bankruptcies, which come more often in crashes and, for banks, in banking crises
 Default-you never opens the desk, so trading skill and trading mistakes show up in
 your grade.
 
+## What you see
+
+Birth starts with the lottery itself: a dot map of the world (Equal Earth projection)
+with a circle for each country sized by its share of that year's births, hopping
+between likely countries before it lands on yours, and a certificate with your odds.
+While you live, your net worth sits on a coin whose metal shows how many years of a
+typical local wage you own (copper under one, silver, gold, platinum from ten), its
+digits roll as it changes, and a strip shows every year of your life coloured from debt
+to wealth, with marks for your milestones and the world's headlines; pick a year to
+jump to it in the ledger. Each New Year's Eve a front page sums up the year just gone:
+its biggest story, what the stock market did month by month, and your own news. The
+statement ends with your best coin and the whole strip.
+
+Names follow the traditions of the 40 countries where most babies are born, including
+the main communities inside a country (Hausa, Yoruba and Igbo in Nigeria; Hindu and
+Muslim names in India), feminine forms of Russian and Polish family names, and
+Myanmar's names without a family name. Partners and children usually share your
+family's tradition.
+
 ## How a life is scored
 
 When you die, the game replays your life three ways with the same seed (same birth,
@@ -83,6 +102,7 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 | OECD Financial Market statistics, monthly | share price indices for 45 countries, for the trading desk | OECD terms, attribution |
 | Robert J. Shiller, Irrational Exuberance data | monthly S&P 500 prices and dividends since 1871 | free, cite Shiller |
 | Kenneth R. French Data Library | monthly returns of 49 US industry portfolios since 1926 | free, cite the library |
+| Natural Earth 1:110m, via world-atlas | land and country shapes for the birth lottery map (`npm run geo` writes `src/ui/geo.ts`) | public domain |
 
 `src/engine/history.ts` adds what the datasets don't carry: headline events, deposit
 freezes (Brazil 1990, Argentina 2001, Cyprus 2013, Lebanon 2019…), wars before 1989,
@@ -109,8 +129,9 @@ pipeline/   fetch.py, build.py — raw downloads → public/data/world.json and 
 src/engine/ the simulation (no UI): economy paths, mortality, careers, businesses,
             events, the yearly loop, automatic players, the end-of-life report;
             markets.ts (monthly prices, companies) and desk.ts (the trading account)
-src/ui/     React screens: start, birth certificate, ledger, decisions, trading desk,
-            statement
-scripts/    simulate.ts and trace.ts for balancing, artifact-page.mjs for publishing
+src/ui/     React screens: start, birth lottery and certificate, ledger, decisions,
+            trading desk, statement; the coin, life strip and front page
+scripts/    simulate.ts and trace.ts for balancing, geo.mjs for the map,
+            artifact-page.mjs for publishing
 tests/      vitest suite
 ```

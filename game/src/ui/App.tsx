@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { country, countryName, flagEmoji, newGame, randomSeed, setWorld, type LifeState, type Report, type Setup, type WorldData } from "../engine";
+import {
+  country, countryName, flagEmoji, hasMarkets, newGame, randomSeed, setMarkets, setWorld,
+  type LifeState, type MarketsData, type Report, type Setup, type WorldData,
+} from "../engine";
 import { Birth } from "./Birth";
 import { End } from "./End";
 import { Play } from "./Play";
@@ -25,6 +28,16 @@ export function App() {
       .then((w) => {
         setWorld(w);
         setScreen("start");
+        // monthly prices only draw the front pages' charts and run the desk, so they load behind the start screen
+        fetch("./data/markets.json")
+          .then((r) => (r.ok ? (r.json() as Promise<MarketsData>) : null))
+          .then((m) => {
+            if (m && !hasMarkets()) {
+              setMarkets(m);
+              refresh();
+            }
+          })
+          .catch(() => {});
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));

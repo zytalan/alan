@@ -4,7 +4,7 @@
 // health and mortality.
 
 import { BIZ, TECH_STAGES } from "./content/business";
-import { makeName } from "./content/names";
+import { makeName, nameGroupFor } from "./content/names";
 import { OCC } from "./content/occupations";
 import { finishDeskYear, markDeskYearStart } from "./desk";
 import { enqueue, EVENT_MAP, EVENTS, destinations, rentIncome, syncAllocation, type EventCtx } from "./events";
@@ -44,6 +44,15 @@ function birthsIn(iso: string, year: number): number {
 export function birthShare(iso: string, year: number): number {
   const total = countryIsos().reduce((a, c) => a + birthsIn(c, year), 0);
   return total > 0 ? birthsIn(iso, year) / total : 0;
+}
+
+/** Every country's share of the world's births in a year, and the total (people). */
+export function birthShares(year: number): { total: number; share: Record<string, number> } {
+  const isos = countryIsos();
+  const total = isos.reduce((a, c) => a + birthsIn(c, year), 0);
+  const share: Record<string, number> = {};
+  for (const c of isos) share[c] = total > 0 ? birthsIn(c, year) / total : 0;
+  return { total: total * 1000, share };
 }
 
 export function drawCountry(year: number, r: Rng): string {
@@ -137,7 +146,8 @@ export function createLife(setup: Setup): LifeState {
   const bgPct = { poor: 0.12, middle: 0.5, rich: 0.92 };
   const familyPct = clamp(setup.familyPct ?? (setup.background ? bgPct[setup.background] + r.range(-0.05, 0.05) : r.next()), 0.003, 0.997);
   const incomeMult = householdIncomeMult(iso, birthYear, familyPct);
-  const name = setup.name ?? makeName(iso, c.r, sex, r).full;
+  const nameGroup = nameGroupFor(iso, c.r, seed);
+  const name = setup.name ?? makeName(nameGroup, sex, r).full;
   const tfr = nearest(iso, "tfr", birthYear) ?? 2.5;
   let siblings = 0;
   for (let k = 0; k < 10; k++) if (r.chance(clamp((tfr - 1) / 10, 0, 0.6))) siblings++;
@@ -195,7 +205,7 @@ export function createLife(setup: Setup): LifeState {
     access: { bank: false, localEq: false, globalEq: false, globalFriction: 0, crypto: false, mortgage: false },
     creditLockUntil: 0,
     livingWithParents: true,
-    flags: {},
+    flags: { nameGroup },
     answers: {},
     pending: [],
     log: [],

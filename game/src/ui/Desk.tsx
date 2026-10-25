@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   buy, cancelOrder, commissionRate, companyById, deposit, deskAccess, deskValue, deskYearEnd, fmt, fmtPrice, fmtUnits,
   headlines, instrumentName, isRealMonth, liquid, memories, monthLabel, monthsPlayed, pct, placeOrder, priceOf, quote,
   quoteBuy, quoteSell, runUntilSomething, sectorLabel, sell, stepMonth, tradable, withdraw, yearOfT, yearStartT,
   type LifeState,
 } from "../engine";
+import { useWidth } from "./charts";
 
 const RED_IS_UP = new Set(["CHN", "KOR"]); // local custom on trading screens
 
@@ -208,20 +209,6 @@ const hash = (i: number, k: number) => {
 };
 
 /** Width of an element, kept current as the layout changes. */
-function useWidth<T extends HTMLElement>(fallback: number): [React.RefObject<T>, number] {
-  const ref = useRef<T>(null);
-  const [w, setW] = useState(fallback);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setW(el.clientWidth || fallback));
-    ro.observe(el);
-    setW(el.clientWidth || fallback);
-    return () => ro.disconnect();
-  }, [fallback]);
-  return [ref, w];
-}
-
 const tickLabel = (v: number) => (Math.abs(v) >= 1 && Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v).toLocaleString("en") : fmtPrice(v));
 
 function PriceChart({ s, id }: { s: LifeState; id: string }) {

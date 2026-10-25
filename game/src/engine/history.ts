@@ -129,6 +129,11 @@ export interface MonthNews {
   major?: boolean;
 }
 
+/** A year's dated headlines for a country (worldwide ones included), in calendar order. */
+export function monthNewsFor(iso: string, year: number): MonthNews[] {
+  return MONTH_NEWS.filter((n) => n.y === year && (!n.iso || n.iso.includes(iso))).sort((a, b) => a.m - b.m);
+}
+
 export const MONTH_NEWS: MonthNews[] = [
   { y: 1971, m: 8, text: "15 Aug · Nixon closes the gold window. The dollar floats.", major: true },
   { y: 1973, m: 10, text: "17 Oct · Arab oil producers announce an embargo. Oil prices quadruple.", major: true },

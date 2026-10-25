@@ -1,5 +1,20 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usd } from "../engine";
+
+/** The rendered width of an element, so a chart can draw at its real size and keep its labels legible. */
+export function useWidth<T extends HTMLElement>(fallback: number): [React.RefObject<T>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(fallback);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.clientWidth || fallback));
+    ro.observe(el);
+    setW(el.clientWidth || fallback);
+    return () => ro.disconnect();
+  }, [fallback]);
+  return [ref, w];
+}
 
 export interface Series {
   key: string;

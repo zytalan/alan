@@ -42,8 +42,19 @@ export function localUnitsReadable(s: LifeState, year = s.year): boolean {
 }
 
 export function fmt(s: LifeState, amount: number): string {
-  if (!localUnitsReadable(s)) return `≈${usd(intlToUsd(s.macroSeed, toIntl2021(s.country, s.macroSeed, s.year, amount)))}`;
-  return money(amount, cur(s));
+  return fmtIn(s, amount, s.year, s.country);
+}
+
+/** Money as it read in another year, or another country the life passed through. */
+export function fmtIn(s: LifeState, amount: number, year: number, iso: string): string {
+  if (econ(iso, s.macroSeed, year, s.marketVariant).wage < 10) return `≈${usd(intlToUsd(s.macroSeed, toIntl2021(iso, s.macroSeed, year, amount)))}`;
+  return money(amount, country(iso).cur);
+}
+
+/** Net worth in years of the typical local wage: what the coin's metal and the life strip show. */
+export function wageYears(s: LifeState, netWorthNominal: number, year = s.year, iso = s.country): number {
+  const w = econ(iso, s.macroSeed, year, s.marketVariant).wage;
+  return w > 0 ? netWorthNominal / w : 0;
 }
 
 export function log(s: LifeState, text: string, tone: Tone = "neutral"): void {

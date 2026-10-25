@@ -5,7 +5,7 @@
 
 import { BIZ, BUSINESSES } from "./content/business";
 import { FIELD_NAMES, OCC } from "./content/occupations";
-import { givenName } from "./content/names";
+import { givenName, nameGroupFor } from "./content/names";
 import { pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
 import { econ, type YearEcon } from "./macro";
@@ -103,6 +103,18 @@ function equityShare(s: LifeState): number {
 
 function partnerOf(s: LifeState) {
   return s.sex === "M" ? "F" : "M";
+}
+
+/** Your own family's name tradition, or the local one once you live abroad. */
+function familyNames(s: LifeState, ...keys: (string | number)[]): string {
+  const own = typeof s.flags.nameGroup === "string" ? s.flags.nameGroup : nameGroupFor(s.birthCountry, country(s.birthCountry).r, s.seed);
+  return s.country === s.birthCountry ? own : nameGroupFor(s.country, country(s.country).r, s.seed, ...keys);
+}
+
+/** Most people marry within their own community; some don't. */
+function partnerNames(s: LifeState): string {
+  if (s.country === s.birthCountry && stream(s.seed, "partner-names", s.year).chance(0.75)) return familyNames(s);
+  return nameGroupFor(s.country, country(s.country).r, s.seed, "partner", s.year);
 }
 
 function moneyYears(s: LifeState, amount: number): string {
@@ -1048,7 +1060,7 @@ const DEFS: EventDef[] = [
     cooldown: 2,
     chance: (s) => (!s.partner && !s.dating && s.age >= 18 && s.age <= 55 ? (s.age < 30 ? 0.13 : s.age < 40 ? 0.07 : 0.03) : 0),
     build: (s, c) => {
-      const name = givenName(s.country, country(s.country).r, partnerOf(s), c.r);
+      const name = givenName(partnerNames(s), partnerOf(s), c.r);
       return {
         title: "Someone new",
         body: `You meet ${name}. There's a spark.`,
@@ -1117,8 +1129,9 @@ const DEFS: EventDef[] = [
     resolve: (s, c, _p, opt) => {
       if (opt !== "yes") return;
       const sex = c.r.chance(0.51) ? "M" : "F";
-      let name = givenName(s.country, country(s.country).r, sex, c.r);
-      for (let k = 0; k < 6 && (s.kids.some((x) => x.name === name) || s.partner?.name === name); k++) name = givenName(s.country, country(s.country).r, sex, c.r);
+      const names = familyNames(s, "kids");
+      let name = givenName(names, sex, c.r);
+      for (let k = 0; k < 6 && (s.kids.some((x) => x.name === name) || s.partner?.name === name); k++) name = givenName(names, sex, c.r);
       s.kids.push({ name, born: s.year, sex });
       bump(s, "happiness", 6);
       log(s, `${name} is born.`, "milestone");

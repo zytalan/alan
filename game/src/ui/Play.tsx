@@ -4,11 +4,27 @@ import {
   consumerRate, country, countryName, creditLimit, deskAccess, deskValue, ec, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
   hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, pct, repayDebt, retirementAge,
   salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, stageName, steady, toToday, tradeAsset, usd, W,
-  type AssetKey, type Lifestyle, type LifeState, type MarketsData,
+  wageYears, type AssetKey, type Lifestyle, type LifeState, type MarketsData,
 } from "../engine";
 import { Sparkline } from "./charts";
+import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
+import { Counter } from "./Counter";
 import { DecisionCard } from "./Decision";
 import { Desk } from "./Desk";
+import { FrontPage } from "./FrontPage";
+import { LifeStrip } from "./LifeStrip";
+
+/** Scroll the ledger to a year (or the nearest year it has a line for) and flash it. */
+function jumpToYear(year: number): void {
+  let el: HTMLElement | null = null;
+  for (let d = 0; d < 200 && !el; d++) el = document.getElementById(`y-${year - d}`) ?? document.getElementById(`y-${year + d}`);
+  if (!el) return;
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
+  el.classList.remove("flash");
+  void el.offsetWidth;
+  el.classList.add("flash");
+}
 
 type Speed = 0 | 1 | 3 | 10;
 const SPEED_MS: Record<Exclude<Speed, 0>, number> = { 1: 1500, 3: 600, 10: 160 };
@@ -154,8 +170,14 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
           </p>
         </div>
       )}
+      <div className="wrap strip-row">
+        <LifeStrip s={s} onPick={jumpToYear} />
+      </div>
       <main className="wrap board">
-        <Ledger s={s} version={version} />
+        <div className="ledger-col">
+          <FrontPage s={s} />
+          <Ledger s={s} version={version} />
+        </div>
         <aside className="side">
           <Summary s={s} />
           <Panels s={s} refresh={refresh} onDesk={openDesk} />
@@ -200,7 +222,7 @@ function Ledger({ s, version }: { s: LifeState; version: number }) {
       </div>
       {years.length === 0 && <div className="ledger-empty">Your life will be written here.</div>}
       {years.map((y) => (
-        <div key={y.year} className="year">
+        <div key={y.year} id={`y-${y.year}`} className="year">
           <div>
             <div className="y">{y.year}</div>
             <div className="a">age {y.age}</div>
@@ -223,6 +245,8 @@ function Ledger({ s, version }: { s: LifeState; version: number }) {
 
 function Summary({ s }: { s: LifeState }) {
   const nw = netWorth(s);
+  const wy = wageYears(s, nw);
+  const metal = metalFor(wy);
   const last = s.history[s.history.length - 1];
   const points = s.history.filter((h) => h.age >= Math.max(0, s.startAge - 1)).map((h) => ({ x: h.age, y: h.realNW }));
   const meters: { k: keyof LifeState["stats"]; label: string }[] = [
@@ -233,8 +257,22 @@ function Summary({ s }: { s: LifeState }) {
   ];
   return (
     <section className="card balance" aria-label="Your account">
-      <span className="eyebrow">Net worth</span>
-      <div className={`big ${nw < 0 ? "neg" : ""}`}>{fmt(s, nw)}</div>
+      <div className="balance-top">
+        <Coin
+          metal={metal}
+          legend={`${s.name} · ${countryName(s.birthCountry)} · ${s.birthYear} ·`}
+          symbol={localUnitsReadable(s) ? currencySymbol(country(s.country).cur) : "$"}
+          age={s.age}
+        />
+        <div className="balance-figure">
+          <span className="eyebrow">Net worth</span>
+          <Counter className={`big ${nw < 0 ? "neg" : ""}`} text={fmt(s, nw)} />
+          <span className="tier">
+            <b>{METAL_LABEL[metal]}</b> ·{" "}
+            {wy < 0 ? `debts of ${Math.abs(wy).toFixed(1)} years' typical wage` : `${wy.toFixed(1)} years of a typical wage here`}
+          </span>
+        </div>
+      </div>
       <div className="muted" style={{ fontSize: 14 }}>
         {localUnitsReadable(s)
           ? `≈ ${usd(toToday(s, nw))} in today's US dollars, adjusted for prices here`

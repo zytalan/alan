@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, nearest, oneIn, pct, toIntl2021, usd,
-  type LifeState, type Report,
+  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, localUnitsReadable, nearest, oneIn, pct,
+  toIntl2021, usd, wageYears, type LifeState, type Report,
 } from "../engine";
 import { formatMult, LifeChart, LuckBars } from "./charts";
+import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
+import { LifeStrip } from "./LifeStrip";
 
 const MONEY_FOR: Record<string, string> = {
   security: "security",
@@ -59,6 +61,17 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     { key: "steady", label: "Index-fund you", color: "var(--series-3)", points: r.steady.map((p) => ({ x: p.age, y: usdNow(p.real) })) },
   ].map((ser) => ({ ...ser, points: ser.points.filter((p) => p.x >= Math.max(15, s.startAge)) }));
 
+  // the coin at its best: the year your net worth was the most years of a typical local wage
+  const peak = s.history.reduce(
+    (b, h) => {
+      const wy = wageYears(s, h.netWorth, h.year, h.country);
+      return wy > b.wy ? { wy, age: h.age } : b;
+    },
+    { wy: -Infinity, age: r.age },
+  );
+  const peakWy = Number.isFinite(peak.wy) ? peak.wy : 0;
+  const metal = metalFor(peakWy);
+
   const dk = s.desk;
   const desk =
     dk && dk.stats.trades > 0
@@ -107,16 +120,29 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
 
   return (
     <main className="wrap statement">
-      <header>
-        <span className="eyebrow">Statement of a life</span>
-        <h1>
-          {r.name} <span aria-hidden="true">{flagEmoji(c.i2)}</span>
-        </h1>
-        <p style={{ margin: 0, color: "var(--ink-2)" }}>
-          {r.birthYear}–{r.deathYear} · {countryName(s.birthCountry)}
-          {s.country !== s.birthCountry ? ` → ${countryName(s.country)}` : ""} · died at {r.age}
-          {r.cause ? `, of ${r.cause}` : ""}
-        </p>
+      <header className="statement-head">
+        <Coin
+          metal={metal}
+          legend={`${r.name} · ${countryName(s.birthCountry)} · ${r.birthYear}–${r.deathYear} ·`}
+          symbol={localUnitsReadable(s) ? currencySymbol(country(s.country).cur) : "$"}
+          age={r.age}
+          size={112}
+        />
+        <div>
+          <span className="eyebrow">Statement of a life</span>
+          <h1>
+            {r.name} <span aria-hidden="true">{flagEmoji(c.i2)}</span>
+          </h1>
+          <p style={{ margin: 0, color: "var(--ink-2)" }}>
+            {r.birthYear}–{r.deathYear} · {countryName(s.birthCountry)}
+            {s.country !== s.birthCountry ? ` → ${countryName(s.country)}` : ""} · died at {r.age}
+            {r.cause ? `, of ${r.cause}` : ""}
+          </p>
+          <p className="tier">
+            Your coin at its best: <b>{METAL_LABEL[metal]}</b>
+            {peakWy > 0 ? ` · ${peakWy.toFixed(1)} years of a typical wage, at ${peak.age}` : ""}
+          </p>
+        </div>
       </header>
 
       <section className="headline">
@@ -136,6 +162,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
           </p>
         </div>
       </section>
+
+      <LifeStrip s={s} title="Your life, year by year" />
 
       <section className="grid2">
         <div className="card">
