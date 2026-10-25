@@ -7,7 +7,7 @@
 import { stream } from "./rng";
 import { DEPOSIT_SHOCKS, WARS } from "./history";
 import {
-  bankCrisisYears, btcClose, btcLastYear, country, devLevel, market, obs, onWorldChange, us, usLastYear, world,
+  bankCrisisYears, btcClose, btcLastYear, country, devLevel, market, nearest, obs, onWorldChange, us, usLastYear, world,
 } from "./world";
 
 export const FIRST_YEAR = 1940;
@@ -240,13 +240,32 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
   const synthMarkets = variant > 0;
   const isUS = iso === "USA";
 
-  // Starting wage for the pre-data years: walk back from the first observation.
+  // Before the first income observation, prices follow the country's early inflation and
+  // wages follow real income per person (the PPP series), so real values stay right even
+  // where the nominal records start late.
   const firstLcuIdx = c.s.lcu.findIndex((v) => v != null && v > 0);
   const firstLcuYear = w.y0 + firstLcuIdx;
-  const earlyInfl = clamp(median(nn(c.s.infl.slice(0, 8)).map((x) => x / 100)) ?? 0.04, 0, 0.15);
-  const earlyStep = 1.02 * (1 + earlyInfl);
-  const startWage = (0.75 * (c.s.lcu[firstLcuIdx] as number)) / earlyStep ** (firstLcuYear - FIRST_YEAR);
-  let wage = startWage;
+  const earlyInfl = clamp(median(nn(c.s.infl).slice(0, 8).map((x) => x / 100)) ?? 0.04, 0, 0.08);
+  const lcuAt = (y: number) => {
+    const v = obs(iso, "lcu", y);
+    return v != null && v > 0 ? v : null;
+  };
+  const pppAt = (y: number) => (y >= w.y0 ? (nearest(iso, "ppp", y) ?? 5000) : (nearest(iso, "ppp", w.y0) ?? 5000) / 1.02 ** (w.y0 - y));
+  /** Inflation implied by nominal over real income per person, where the CPI is missing. */
+  const impliedInfl = (y: number): number | null => {
+    const a = lcuAt(y - 1);
+    const b = lcuAt(y);
+    if (a == null || b == null) return null;
+    return clamp(b / pppAt(y) / (a / pppAt(y - 1)) - 1, -0.3, 50);
+  };
+  const earlyCpi: number[] = [1];
+  for (let y = FIRST_YEAR + 1; y <= firstLcuYear; y++) {
+    const d = obs(iso, "infl", y);
+    earlyCpi.push(earlyCpi[earlyCpi.length - 1] * (1 + (d != null ? d / 100 : (impliedInfl(y) ?? earlyInfl))));
+  }
+  const firstLevel = (lcuAt(firstLcuYear) ?? 1) / pppAt(firstLcuYear); // local money per real dollar of income
+  const earlyWage = (y: number) => 0.75 * pppAt(y) * firstLevel * (earlyCpi[y - FIRST_YEAR] / earlyCpi[firstLcuYear - FIRST_YEAR]);
+  let wage = earlyWage(FIRST_YEAR);
   const firstFx = c.s.fx.find((v) => v != null) ?? 1;
 
   const years: YearEcon[] = [];
@@ -264,8 +283,10 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
     // inflation
     const dInfl = obs(iso, "infl", y);
     const realInfl = dInfl != null;
+    const implied = realInfl ? null : impliedInfl(y);
     if (realInfl) infl = dInfl / 100;
-    else if (y < firstLcuYear) infl = earlyInfl; // before the data: a smooth ramp into the first observation
+    else if (implied != null) infl = implied;
+    else if (y <= firstLcuYear) infl = earlyInfl; // before the data: a smooth ramp into the first observation
     else {
       const anchor = k.dev > 0.75 ? 0.022 : Math.min(k.inflMed, 0.08);
       const mu = k.inflMed + (anchor - k.inflMed) * fade;
@@ -285,7 +306,7 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
     const realWage = dLcu != null;
     const popG = k.popGrowth * (1 - fade);
     if (realWage) wage = 0.75 * dLcu;
-    else if (y < firstLcuYear) wage = startWage * earlyStep ** (y - FIRST_YEAR);
+    else if (y < firstLcuYear) wage = earlyWage(y);
     else wage = wage * (1 + growth - popG) * (1 + infl);
     cpi = y === FIRST_YEAR ? 1 : cpi * (1 + infl);
 

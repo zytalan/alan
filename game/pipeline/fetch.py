@@ -10,6 +10,8 @@ Sources
 - Jorda-Schularick-Taylor Macrohistory Database R6: long-run returns, 18 countries
 - Damodaran (NYU Stern) histretSP.xls: US stocks, bills, bonds, real estate, gold
 - blockchain.com charts API: Bitcoin market price
+- Robert Shiller's ie_data.xls: monthly S&P 500 prices and dividends since 1871
+- Kenneth French Data Library: monthly returns of 49 US industry portfolios since 1926
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import json
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -65,7 +68,13 @@ URLS = {
     "jst_r6.dta": "https://www.macrohistory.net/app/download/9834512469/JSTdatasetR6.dta",
     "damodaran_histretSP.xls": "https://pages.stern.nyu.edu/~adamodar/pc/datasets/histretSP.xls",
     "btc_market_price.json": "https://api.blockchain.info/charts/market-price?timespan=all&format=json&sampled=false",
+    "kf_49_industries.zip": "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/49_Industry_Portfolios_CSV.zip",
+    "shiller_ie_data.xls": "https://shillerdata.com/",  # resolved to the current file link at download time
 }
+SHILLER_FALLBACK = (
+    "https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/downloads/"
+    "1449043e-a1ed-4e2e-8e9c-7b9a2a064493/ie_data.xls"
+)
 for key, code in WB_INDICATORS.items():
     URLS[f"wb_{key}.json"] = (
         f"https://api.worldbank.org/v2/country/all/indicator/{code}"
@@ -73,10 +82,26 @@ for key, code in WB_INDICATORS.items():
     )
 
 
+def shiller_link() -> str:
+    """The data page links the spreadsheet under a versioned URL; find the current one."""
+    req = urllib.request.Request(URLS["shiller_ie_data.xls"], headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            page = resp.read().decode("utf-8", "replace")
+        m = re.search(r'href="((?:https:)?//[^"]+/ie_data\.xls[^"]*)"', page)
+        if m:
+            return m.group(1) if m.group(1).startswith("https:") else "https:" + m.group(1)
+    except Exception:
+        pass
+    return SHILLER_FALLBACK
+
+
 def download(name: str, url: str, force: bool) -> str:
     dest = RAW / name
     if dest.exists() and dest.stat().st_size > 0 and not force:
         return f"cached  {name}"
+    if name == "shiller_ie_data.xls":
+        url = shiller_link()
     last_err: Exception | None = None
     for attempt in range(4):
         try:

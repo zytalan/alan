@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  advance, ASSET_KEYS, ASSET_LABEL, availableAssets, BIZ, buyHome, buyListedStock, careerAction, careerOptions, choose,
-  closeBusiness, consumerRate, country, countryName, creditLimit, ec, FIELD_NAMES, flagEmoji, fmt, homePrice, liquid,
-  listBusiness, mortgageQuote, netWorth, pct, repayDebt, retirementAge, salary, sellHolding, sellHome, setAllocation,
-  setLifestyle, stageName, steady, stockMarket, toToday, tradeAsset, usd, W, type AssetKey, type Lifestyle, type LifeState,
+  advance, ASSET_KEYS, ASSET_LABEL, availableAssets, BIZ, buyHome, careerAction, careerOptions, choose, closeBusiness,
+  consumerRate, country, countryName, creditLimit, deskAccess, deskValue, ec, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
+  hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, pct, repayDebt, retirementAge,
+  salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, stageName, steady, toToday, tradeAsset, usd, W,
+  type AssetKey, type Lifestyle, type LifeState, type MarketsData,
 } from "../engine";
 import { Sparkline } from "./charts";
 import { DecisionCard } from "./Decision";
+import { Desk } from "./Desk";
 
 type Speed = 0 | 1 | 3 | 10;
 const SPEED_MS: Record<Exclude<Speed, 0>, number> = { 1: 1500, 3: 600, 10: 160 };
@@ -31,7 +33,29 @@ const LIFESTYLES: { id: Lifestyle; label: string; hint: string }[] = [
 export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: number; refresh: () => void; onDeath: () => void }) {
   const [speed, setSpeed] = useState<Speed>(0);
   const [auto, setAuto] = useState(false);
+  const [deskOpen, setDeskOpen] = useState(false);
+  const [deskState, setDeskState] = useState<"idle" | "loading" | "error">("idle");
   const pending = s.pending[0];
+  const access = deskAccess(s);
+
+  const openDesk = useCallback(async () => {
+    setSpeed(0);
+    if (!hasMarkets()) {
+      setDeskState("loading");
+      try {
+        const r = await fetch("./data/markets.json");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setMarkets((await r.json()) as MarketsData);
+      } catch {
+        setDeskState("error");
+        return;
+      }
+    }
+    setDeskState("idle");
+    ensureDesk(s);
+    setDeskOpen(true);
+    refresh();
+  }, [s, refresh]);
 
   const step = useCallback(() => {
     if (!s.alive || s.pending.length) return;
@@ -59,6 +83,7 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
   }, [s, version, pending, speed, auto, step, refresh, onDeath]);
 
   useEffect(() => {
+    if (deskOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === " ") {
@@ -68,9 +93,27 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [step, deskOpen]);
 
   const c = country(s.country);
+  if (deskOpen && s.desk && s.alive) {
+    return (
+      <>
+        <Desk s={s} version={version} refresh={refresh} onClose={() => setDeskOpen(false)} onFinishYear={step} />
+        {pending && (
+          <DecisionCard
+            d={pending}
+            year={s.year}
+            age={s.age}
+            onChoose={(id) => {
+              choose(s, pending.id, id);
+              refresh();
+            }}
+          />
+        )}
+      </>
+    );
+  }
   return (
     <>
       <header className="topbar">
@@ -92,6 +135,9 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
                 </button>
               ))}
             </div>
+            <button className="btn small" onClick={openDesk} disabled={!access.ok || deskState === "loading"} title={access.ok ? "Trade month by month" : access.reason}>
+              {deskState === "loading" ? "Loading markets…" : "Trading desk"}
+            </button>
             <button className="btn small primary" onClick={step} disabled={!!pending || !s.alive} title="Next year (N)">
               Next year
             </button>
@@ -101,11 +147,18 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
           </div>
         </div>
       </header>
+      {deskState === "error" && (
+        <div className="wrap">
+          <p className="note" role="alert">
+            The market history didn't load. Check your connection and press Trading desk again.
+          </p>
+        </div>
+      )}
       <main className="wrap board">
         <Ledger s={s} version={version} />
         <aside className="side">
           <Summary s={s} />
-          <Panels s={s} refresh={refresh} />
+          <Panels s={s} refresh={refresh} onDesk={openDesk} />
         </aside>
       </main>
       {pending && s.alive && !auto && (
@@ -183,7 +236,9 @@ function Summary({ s }: { s: LifeState }) {
       <span className="eyebrow">Net worth</span>
       <div className={`big ${nw < 0 ? "neg" : ""}`}>{fmt(s, nw)}</div>
       <div className="muted" style={{ fontSize: 14 }}>
-        ≈ {usd(toToday(s, nw))} in today's US dollars, adjusted for prices here
+        {localUnitsReadable(s)
+          ? `≈ ${usd(toToday(s, nw))} in today's US dollars, adjusted for prices here`
+          : `In today's US dollars: the ${country(s.country).cur} of ${s.year} has been redenominated so often since that its amounts would read as zero`}
       </div>
       <Sparkline points={points} label="Net worth over your life, in today's dollars" />
       <div className="flows">
@@ -221,7 +276,7 @@ function Summary({ s }: { s: LifeState }) {
 
 type Tab = "money" | "work" | "invest" | "home" | "business";
 
-function Panels({ s, refresh }: { s: LifeState; refresh: () => void }) {
+function Panels({ s, refresh, onDesk }: { s: LifeState; refresh: () => void; onDesk: () => void }) {
   const [tab, setTab] = useState<Tab>("money");
   const tabs: { id: Tab; label: string }[] = [
     { id: "money", label: "Money" },
@@ -247,7 +302,7 @@ function Panels({ s, refresh }: { s: LifeState; refresh: () => void }) {
       ) : tab === "work" ? (
         <WorkPanel s={s} refresh={refresh} />
       ) : tab === "invest" ? (
-        <InvestPanel s={s} refresh={refresh} />
+        <InvestPanel s={s} refresh={refresh} onDesk={onDesk} />
       ) : tab === "home" ? (
         <HomePanel s={s} refresh={refresh} />
       ) : (
@@ -317,6 +372,7 @@ function MoneyPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
             <Row key={k} label={ASSET_LABEL[k]} value={fmt(s, s.holdings[k])} share={total ? s.holdings[k] / total : 0} />
           ))}
           {s.cashHome > 0.5 && <Row label="Cash at home" value={fmt(s, s.cashHome)} share={total ? s.cashHome / total : 0} />}
+          {s.desk && deskValue(s) > 0.5 && <Row label="Trading account" value={fmt(s, deskValue(s))} />}
           {s.frozen && <Row label={`Frozen until ${s.frozen.until}`} value={fmt(s, s.frozen.amount)} />}
           {total <= 0.5 && !s.frozen && <span className="muted">Nothing saved yet.</span>}
         </div>
@@ -427,10 +483,10 @@ function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
   );
 }
 
-function InvestPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
+function InvestPanel({ s, refresh, onDesk }: { s: LifeState; refresh: () => void; onDesk: () => void }) {
   const allowed = availableAssets(s).filter((k) => k !== "cash");
   const cash = s.holdings.cash + s.cashHome;
-  const market = stockMarket(s);
+  const access = deskAccess(s);
   const prev = ec(s, s.year - 1);
   const [amountPct, setAmountPct] = useState(10);
   const amt = (liquid(s) * amountPct) / 100;
@@ -468,21 +524,16 @@ function InvestPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
         ))}
         {allowed.length === 0 && <p className="note">Nothing to invest in yet.</p>}
       </div>
-      <div>
-        <span className="eyebrow">Listed companies this year</span>
-        {market.length === 0 && <p className="note">You can't buy individual stocks yet.</p>}
-        {market.map((st, i) => (
-          <div key={st.id} className="item">
-            <span className="t">{st.name}</span>
-            <button className="btn small" disabled={amt < 1 || liquid(s) < amt} onClick={() => (buyListedStock(s, i, amt), refresh())}>
-              Buy {fmt(s, amt)}
-            </button>
-            <span className="d">
-              {st.sector} · “{st.pitch}”
-            </span>
-          </div>
-        ))}
-        {market.length > 0 && <p className="note">Most single stocks trail the index. A few carry it.</p>}
+      <div className="item">
+        <span className="t">Trading desk</span>
+        <button className="btn small" disabled={!access.ok} title={access.reason} onClick={onDesk}>
+          Open
+        </button>
+        <span className="d">
+          {access.ok
+            ? `Index funds and listed companies, month by month.${s.desk ? ` Your account: ${fmt(s, deskValue(s))}.` : ""}`
+            : `${access.reason}.`}
+        </span>
       </div>
       {s.stocks.length > 0 && (
         <div>

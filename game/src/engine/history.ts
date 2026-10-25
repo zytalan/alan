@@ -120,6 +120,52 @@ export function notesFor(iso: string, year: number): HistoryNote[] {
   return HISTORY.filter((h) => h.year === year && (!h.iso || h.iso.includes(iso)));
 }
 
+/** Dated market headlines for the trading desk. `major` ones stop "run until something happens". */
+export interface MonthNews {
+  y: number;
+  m: number;
+  text: string;
+  iso?: string[];
+  major?: boolean;
+}
+
+export const MONTH_NEWS: MonthNews[] = [
+  { y: 1971, m: 8, text: "15 Aug · Nixon closes the gold window. The dollar floats.", major: true },
+  { y: 1973, m: 10, text: "17 Oct · Arab oil producers announce an embargo. Oil prices quadruple.", major: true },
+  { y: 1974, m: 8, text: "9 Aug · Nixon resigns." },
+  { y: 1979, m: 10, text: "6 Oct · Volcker's Fed turns to crushing inflation. Rates head for 20%.", major: true },
+  { y: 1980, m: 1, text: "21 Jan · Gold hits $850 an ounce." },
+  { y: 1982, m: 8, text: "12 Aug · Mexico says it can't pay its debts.", iso: LATAM82, major: true },
+  { y: 1982, m: 8, text: "12 Aug · US stocks bottom. A long bull market begins.", iso: ["USA"] },
+  { y: 1985, m: 9, text: "22 Sep · The Plaza Accord: the dollar is pushed down, the yen soars." },
+  { y: 1987, m: 10, text: "19 Oct · Black Monday: the Dow falls 22.6% in a single day.", major: true },
+  { y: 1989, m: 11, text: "9 Nov · The Berlin Wall falls." },
+  { y: 1989, m: 12, text: "29 Dec · The Nikkei closes at a record 38,916.", iso: ["JPN"] },
+  { y: 1990, m: 8, text: "2 Aug · Iraq invades Kuwait. Oil spikes.", major: true },
+  { y: 1992, m: 9, text: "16 Sep · Black Wednesday: the pound crashes out of the European exchange rate system.", iso: ["GBR"], major: true },
+  { y: 1994, m: 12, text: "20 Dec · Mexico devalues the peso. The 'tequila crisis' begins.", iso: ["MEX"], major: true },
+  { y: 1997, m: 7, text: "2 Jul · Thailand floats the baht. The Asian financial crisis begins.", iso: ASIA97, major: true },
+  { y: 1997, m: 10, text: "27 Oct · Hong Kong's crash spreads: the Dow falls 7% in a day." },
+  { y: 1998, m: 8, text: "17 Aug · Russia defaults on its debt and devalues the ruble.", major: true },
+  { y: 1998, m: 9, text: "23 Sep · Wall Street banks rescue the hedge fund LTCM." },
+  { y: 2000, m: 3, text: "10 Mar · The Nasdaq peaks. The dot-com bust begins.", major: true },
+  { y: 2001, m: 9, text: "11 Sep · Terrorist attacks on New York and Washington. US markets close for four days.", major: true },
+  { y: 2001, m: 12, text: "1 Dec · Argentina freezes bank deposits: the corralito.", iso: ["ARG"], major: true },
+  { y: 2007, m: 8, text: "9 Aug · BNP Paribas freezes three funds. Credit markets seize up." },
+  { y: 2008, m: 3, text: "16 Mar · Bear Stearns is rescued in a fire sale." },
+  { y: 2008, m: 9, text: "15 Sep · Lehman Brothers collapses. Panic spreads to every market.", major: true },
+  { y: 2008, m: 10, text: "3 Oct · Congress passes a $700 billion bank bailout. Markets keep falling." },
+  { y: 2009, m: 3, text: "9 Mar · US stocks hit their lowest close since 1996. The recovery starts the next day." },
+  { y: 2010, m: 5, text: "6 May · Flash Crash: the Dow drops nearly 1,000 points in minutes.", major: true },
+  { y: 2011, m: 8, text: "5 Aug · S&P strips the United States of its AAA rating.", major: true },
+  { y: 2015, m: 6, text: "12 Jun · China's stock bubble peaks. Shanghai falls 40% in two months.", iso: ["CHN"], major: true },
+  { y: 2015, m: 8, text: "11 Aug · China devalues the yuan." },
+  { y: 2016, m: 6, text: "23 Jun · Britain votes to leave the European Union.", major: true },
+  { y: 2020, m: 3, text: "Mar · COVID-19: the fastest crash in history. Central banks flood markets with money.", major: true },
+  { y: 2022, m: 2, text: "24 Feb · Russia invades Ukraine.", major: true },
+  { y: 2023, m: 3, text: "10 Mar · Silicon Valley Bank fails in a two-day bank run." },
+];
+
 export interface DepositShock {
   iso: string;
   year: number;
@@ -184,7 +230,14 @@ export const PONZI_WAVES: { iso: string; from: number; to: number; text: string 
 ];
 
 /** Capital controls on buying foreign assets: 'closed' or 'quota' (allowed, with friction). */
+const SOVIET = ["RUS", "UKR", "BLR", "KAZ", "UZB", "TKM", "KGZ", "TJK", "AZE", "ARM", "GEO", "MDA", "LTU", "LVA", "EST"];
+const EASTERN_BLOC = ["POL", "HUN", "CZE", "SVK", "ROU", "BGR", "ALB", "MNG"];
+
 export const CAPITAL_CONTROLS: { iso: string; from: number; to: number; kind: "closed" | "quota" }[] = [
+  ...SOVIET.map((iso) => ({ iso, from: 1950, to: 1991, kind: "closed" as const })),
+  ...EASTERN_BLOC.map((iso) => ({ iso, from: 1950, to: 1990, kind: "closed" as const })),
+  { iso: "LAO", from: 1975, to: 1990, kind: "closed" },
+  { iso: "KHM", from: 1975, to: 1990, kind: "closed" },
   { iso: "CHN", from: 1950, to: 2006, kind: "closed" },
   { iso: "CHN", from: 2007, to: 2200, kind: "quota" },
   { iso: "IND", from: 1950, to: 2003, kind: "closed" },

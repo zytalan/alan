@@ -20,6 +20,26 @@ how much was you.
   account or access to the stock market, capital controls can block foreign assets, life
   shocks force sales at the bottom, and exchanges like Mt. Gox can take your coins.
 
+## The trading desk
+
+From 18, with a bank account and a stock market to reach, you can open a brokerage
+account and play any year month by month. Move money in from savings, buy and sell
+your country's index fund, the S&P 500 (where capital controls allow) and listed
+companies, set limit and stop-loss orders, and press "run until something happens" to
+skip to the next fill, 10% move or major headline. Orders fill at the month's average
+price plus a spread and the commission of the era (1.5% before 1975, 0.05% today);
+index funds charge the fees of their day and pay dividends. There is no borrowing and
+no short selling. Leave the desk and the rest of the year plays out on its own; gains
+are taxed at year end and the account counts in your net worth.
+
+Companies are fictional, but each belongs to a real US industry and moves with it
+month by month (Kenneth French's 49 industry portfolios since 1926), on top of your
+country's index and its own luck: listings, takeovers, breakout years and
+bankruptcies, which come more often in crashes and, for banks, in banking crises.
+
+Default-you never opens the desk, so trading skill and trading mistakes show up in
+your grade.
+
 ## How a life is scored
 
 When you die, the game replays your life three ways with the same seed (same birth,
@@ -60,6 +80,9 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 | Jordà–Schularick–Taylor Macrohistory Database (R6) | stock, bond and housing total returns, rental yields and banking crises for 18 countries, 1870–2020 | CC BY-NC-SA 4.0 (non-commercial) |
 | Aswath Damodaran, NYU Stern | US stocks, bills, bonds, home prices and gold, 1928–2025 | free with attribution |
 | blockchain.com charts API | Bitcoin price from 2010 | check terms before commercial use |
+| OECD Financial Market statistics, monthly | share price indices for 45 countries, for the trading desk | OECD terms, attribution |
+| Robert J. Shiller, Irrational Exuberance data | monthly S&P 500 prices and dividends since 1871 | free, cite Shiller |
+| Kenneth R. French Data Library | monthly returns of 49 US industry portfolios since 1926 | free, cite the library |
 
 `src/engine/history.ts` adds what the datasets don't carry: headline events, deposit
 freezes (Brazil 1990, Argentina 2001, Cyprus 2013, Lebanon 2019…), wars before 1989,
@@ -68,17 +91,26 @@ capital controls, university closures and pyramid-scheme waves. The Shanghai Com
 
 What is simulated rather than replayed: markets in countries with no stock-market data,
 gaps in the data, and every year after 2025, drawn from each country's own history.
-Companies you can buy are fictional; single-stock returns are drawn so that most trail
-the index and a few carry it. Taiwan, Venezuela, North Korea, Cuba, Yemen, South Sudan
+On the desk, simulated months are drawn so they compound exactly to the year's return
+the life engine uses; real months replay the monthly averages in the data. Companies
+are fictional; their returns are drawn so that most trail the index and a few carry it.
+
+Where a currency was redenominated so often that old amounts read as zero (Brazil before
+1993, the Soviet ruble), money is shown in today's US dollars, marked with ≈. Before a
+country's income records begin, wages follow its real income per person, so values in
+today's money stay comparable across countries. Taiwan, Venezuela, North Korea, Cuba, Yemen, South Sudan
 and Eritrea are missing because the World Bank has no usable economic series for them.
 
 ## Layout
 
 ```
-pipeline/   fetch.py, build.py — raw downloads → public/data/world.json
+pipeline/   fetch.py, build.py — raw downloads → public/data/world.json and markets.json
+            (monthly history, loaded the first time you open the desk)
 src/engine/ the simulation (no UI): economy paths, mortality, careers, businesses,
-            events, the yearly loop, automatic players, the end-of-life report
-src/ui/     React screens: start, birth certificate, ledger, decisions, statement
+            events, the yearly loop, automatic players, the end-of-life report;
+            markets.ts (monthly prices, companies) and desk.ts (the trading account)
+src/ui/     React screens: start, birth certificate, ledger, decisions, trading desk,
+            statement
 scripts/    simulate.ts and trace.ts for balancing, artifact-page.mjs for publishing
 tests/      vitest suite
 ```

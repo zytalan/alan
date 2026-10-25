@@ -21,6 +21,7 @@ from babel.numbers import get_territory_currencies
 ROOT = Path(__file__).parent
 RAW = ROOT / "raw"
 OUT = ROOT.parent / "public" / "data" / "world.json"
+OUT_MARKETS = ROOT.parent / "public" / "data" / "markets.json"
 
 Y0, Y1 = 1960, 2025  # World Bank span
 M0 = 1950  # market series start
@@ -161,6 +162,9 @@ def load_jst() -> pd.DataFrame:
     return df[df.year >= M0]
 
 
+OECD_MONTHLY_SHARES: dict[str, dict[int, float]] = {}  # filled by load_oecd for the desk
+
+
 def load_oecd() -> dict[str, dict[str, dict[int, float]]]:
     df = pd.read_csv(RAW / "oecd_finmark.csv", low_memory=False,
                      usecols=["REF_AREA", "FREQ", "MEASURE", "TIME_PERIOD", "OBS_VALUE"])
@@ -172,6 +176,10 @@ def load_oecd() -> dict[str, dict[str, dict[int, float]]]:
         if len(monthly):
             monthly["y"] = monthly.TIME_PERIOD.str[:4].astype(int)
             monthly["m"] = monthly.TIME_PERIOD.str[5:7].astype(int)
+            if measure == "SHARE":
+                OECD_MONTHLY_SHARES[iso] = {
+                    month_index(int(y), int(m)): float(v) for y, m, v in zip(monthly.y, monthly.m, monthly.OBS_VALUE) if y >= M0
+                }
             for y, gy in monthly.groupby("y"):
                 if measure == "SHARE":
                     last = gy.sort_values("m").iloc[-1]
@@ -198,6 +206,96 @@ def bond_return_from_yields(yields_pct: dict[int, float], duration: float = 6.5)
             y_prev, y_now = yields_pct[y - 1] / 100, yields_pct[y] / 100
             out[y] = y_prev - duration * (y_now - y_prev)
     return out
+
+
+def month_index(year: int, month: int) -> int:
+    return (year - M0) * 12 + month - 1
+
+
+def load_shiller() -> tuple[dict[int, float], dict[int, float]]:
+    """Monthly S&P composite (average of daily closes) and annualized dividends, by month index."""
+    sh = xlrd.open_workbook(RAW / "shiller_ie_data.xls").sheet_by_name("Data")
+    price: dict[int, float] = {}
+    div: dict[int, float] = {}
+    for r in range(sh.nrows):
+        d = sh.cell_value(r, 0)
+        if not isinstance(d, float) or d < M0:
+            continue
+        year = int(d)
+        month = round((d - year) * 100)  # "2026.1" is October
+        p, dv = sh.cell_value(r, 1), sh.cell_value(r, 2)
+        if isinstance(p, float) and p > 0:
+            price[month_index(year, month)] = p
+        if isinstance(dv, float) and dv > 0:
+            div[month_index(year, month)] = dv
+    price.pop(max(price))  # the newest month is still in progress
+    return price, div
+
+
+def load_french_industries() -> tuple[list[str], dict[int, list[float | None]]]:
+    """Value-weighted monthly returns (%) of Kenneth French's 49 US industry portfolios."""
+    import io
+    import zipfile
+
+    z = zipfile.ZipFile(RAW / "kf_49_industries.zip")
+    lines = z.read(z.namelist()[0]).decode("latin1").splitlines()
+    start = next(i for i, l in enumerate(lines) if "Average Value Weighted Returns -- Monthly" in l)
+    names = [c.strip() for c in lines[start + 1].split(",")[1:]]
+    rows: dict[int, list[float | None]] = {}
+    for l in lines[start + 2:]:
+        cells = [c.strip() for c in l.split(",")]
+        if not cells[0].isdigit() or len(cells[0]) != 6:
+            break
+        year, month = int(cells[0][:4]), int(cells[0][4:])
+        if year < M0:
+            continue
+        vals = [float(c) for c in cells[1:]]
+        rows[month_index(year, month)] = [None if v <= -99.99 else v for v in vals]
+    return names, rows
+
+
+def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, isos: set[str]) -> dict:
+    """Monthly market history for the trading desk, loaded only when a player opens it."""
+    price, div = load_shiller()
+    names, ind = load_french_industries()
+
+    def packed(series: dict[int, float], digits: int = 4) -> list | None:
+        if not series:
+            return None
+        s, e = min(series), max(series)
+        return [s, [sig(series.get(k), digits) for k in range(s, e + 1)]]
+
+    share = {iso: packed(m) for iso, m in oecd_monthly.items() if iso in isos and iso != "USA" and len(m) >= 24}
+    share["USA"] = packed(price, 5)
+    # dividends after the last reported month carry the last yield forward
+    last_d = max(div)
+    usdiv = {k: div.get(k, div[last_d] * price[k] / price[last_d] if k > last_d else None) for k in price}
+    dy = {}
+    for iso, g in jst.groupby("iso"):
+        if iso in isos and iso != "USA":
+            dp = g.set_index("year").eq_dp.dropna()
+            if len(dp):
+                dy[iso] = [int(dp.index.min()), [rnd(dp.get(y), 4) for y in range(int(dp.index.min()), int(dp.index.max()) + 1)]]
+    s = min(ind)
+    return {
+        "v": 1,
+        "generated": dt.date.today().isoformat(),
+        "m0": M0,
+        "share": {k: v for k, v in sorted(share.items()) if v},
+        "usDiv": packed(usdiv, 4),
+        "dy": dy,
+        "ind": {
+            "start": s,
+            "names": names,
+            "r": {n: [rnd(ind[k][j] * 100, 0) if k in ind and ind[k][j] is not None else None for k in range(s, max(ind) + 1)] for j, n in enumerate(names)},
+        },
+        "sources": [
+            "OECD Financial Market statistics, monthly share prices (sdmx.oecd.org)",
+            "Robert J. Shiller, Irrational Exuberance data: S&P composite and dividends (shillerdata.com)",
+            "Kenneth R. French Data Library: 49 industry portfolios, value-weighted monthly returns",
+            "Jorda-Schularick-Taylor Macrohistory Database R6: dividend yields",
+        ],
+    }
 
 
 def load_btc() -> dict:
@@ -265,7 +363,8 @@ def main() -> None:
         for i in range(len(ppp) - 2, -1, -1):  # remaining early gaps: walk back with GDP growth
             if ppp[i] is None and ppp[i + 1]:
                 gr = growth[i + 1]
-                ppp[i] = ppp[i + 1] / (1 + (gr / 100 if gr is not None else 0.015) - 0.02)
+                # without growth data, assume income per person grew 2% a year (the world's 1960-90 pace)
+                ppp[i] = ppp[i + 1] / ((1 + gr / 100 - 0.02) if gr is not None else 1.02)
         for i in range(1, len(ppp)):  # late gaps: walk forward
             if ppp[i] is None and ppp[i - 1]:
                 gr = growth[i]
@@ -482,6 +581,10 @@ def main() -> None:
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(world, separators=(",", ":")))
+    markets = build_markets(OECD_MONTHLY_SHARES, jst, set(out_countries))
+    OUT_MARKETS.write_text(json.dumps(markets, separators=(",", ":")))
+    print(f"monthly markets: {len(markets['share'])} share series, {len(markets['ind']['names'])} industries, "
+          f"{OUT_MARKETS.stat().st_size / 1e6:.2f} MB")
 
     total_births = sum(c["s"]["births"][2023 - Y0] or 0 for c in out_countries.values())
     print(f"countries: {len(out_countries)}  markets: {len(out_markets)}  size: {OUT.stat().st_size / 1e6:.2f} MB")

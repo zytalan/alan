@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  buildReport, country, countryIn, countryName, flagEmoji, intlToUsd, nearest, oneIn, pct, toIntl2021, usd, type LifeState, type Report,
+  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, nearest, oneIn, pct, toIntl2021, usd,
+  type LifeState, type Report,
 } from "../engine";
 import { formatMult, LifeChart, LuckBars } from "./charts";
 
@@ -58,6 +59,18 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     { key: "steady", label: "Index-fund you", color: "var(--series-3)", points: r.steady.map((p) => ({ x: p.age, y: usdNow(p.real) })) },
   ].map((ser) => ({ ...ser, points: ser.points.filter((p) => p.x >= Math.max(15, s.startAge)) }));
 
+  const dk = s.desk;
+  const desk =
+    dk && dk.stats.trades > 0
+      ? {
+          // money moved in decades apart is compared after inflation, in today's dollars
+          profit: intlToUsd(s.macroSeed, toIntl2021(s.country, s.macroSeed, s.year, deskValue(s)) - dk.stats.flowsReal),
+          costs: intlToUsd(s.macroSeed, dk.stats.costsReal),
+          best: dk.stats.best && dk.stats.best.pnl > 0 ? `${dk.stats.best.name}` : null,
+          worst: dk.stats.worst && dk.stats.worst.pnl < 0 ? `${dk.stats.worst.name}` : null,
+          drawdown: dk.stats.drawdown,
+        }
+      : null;
   const luckRows = [
     { label: "Where you were born", value: r.luck.country, note: `A typical life in ${here} vs. a typical life on Earth` },
     { label: "Family & fortune", value: r.luck.family, note: "Default-you vs. a typical life here: family, health, events" },
@@ -153,6 +166,28 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
             <span className="num">{usd(usdNow(r.twinPeak))}</span>
             <span>Index-fund you</span>
             <span className="num">{usd(usdNow(r.steadyPeak))}</span>
+            {desk && (
+              <>
+                <span>Trading desk profit, after costs</span>
+                <span className="num">{usd(desk.profit)}</span>
+                <span>Fees and tax paid</span>
+                <span className="num">{usd(desk.costs)}</span>
+                {desk.best && (
+                  <>
+                    <span>Best trade</span>
+                    <span>{desk.best}</span>
+                  </>
+                )}
+                {desk.worst && (
+                  <>
+                    <span>Worst trade</span>
+                    <span>{desk.worst}</span>
+                  </>
+                )}
+                <span>Deepest fall in the account</span>
+                <span className="num">{pct(desk.drawdown)}</span>
+              </>
+            )}
           </div>
           {r.hindsight && (
             <p style={{ margin: 0 }}>

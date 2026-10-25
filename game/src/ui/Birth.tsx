@@ -1,6 +1,6 @@
 import {
-  country, countryIn, countryName, flagEmoji, FIELD_NAMES, memories, money, nearest, oneIn, pct, toToday, topPercent, usd, W,
-  type LifeState,
+  country, countryIn, countryName, flagEmoji, FIELD_NAMES, localUnitsReadable, memories, money, nearest, oneIn, pct, toToday,
+  topPercent, usd, W, type LifeState,
 } from "../engine";
 
 const EDU_LABEL: Record<string, string> = {
@@ -64,7 +64,15 @@ export function Birth({ s, onBegin }: { s: LifeState; onBegin: () => void }) {
           )}
           <dt>A typical wage here</dt>
           <dd>
-            <span className="num">{money(w, c.cur)}</span> a year <span className="muted">≈ {usd(toToday(s, w))} today</span>
+            {localUnitsReadable(s) ? (
+              <>
+                <span className="num">{money(w, c.cur)}</span> a year <span className="muted">≈ {usd(toToday(s, w))} today</span>
+              </>
+            ) : (
+              <>
+                <span className="num">{usd(toToday(s, w))}</span> a year in today's dollars
+              </>
+            )}
           </dd>
         </dl>
         {travel && (

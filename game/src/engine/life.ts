@@ -6,8 +6,9 @@
 import { BIZ, TECH_STAGES } from "./content/business";
 import { makeName } from "./content/names";
 import { OCC } from "./content/occupations";
+import { finishDeskYear, markDeskYearStart } from "./desk";
 import { enqueue, EVENT_MAP, EVENTS, destinations, rentIncome, syncAllocation, type EventCtx } from "./events";
-import { money, oneIn, pct, topPercent } from "./format";
+import { oneIn, pct, topPercent } from "./format";
 import { DEPOSIT_SHOCKS, EXCHANGE_FAILURES, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
@@ -185,6 +186,7 @@ export function createLife(setup: Setup): LifeState {
     holdings: { cash: 0, usd: 0, bonds: 0, localEq: 0, globalEq: 0, gold: 0, crypto: 0 },
     cashHome: 0,
     stocks: [],
+    desk: null,
     properties: [],
     consumerDebt: 0,
     studentDebt: 0,
@@ -226,6 +228,7 @@ export function setTwinHook(fn: (s: LifeState) => number): void {
 
 export function beginYear(s: LifeState): void {
   s.yr = { careerActionUsed: false, income: 0, spending: 0, oneOff: 0, windfall: 0 };
+  markDeskYearStart(s);
   delete s.flags.incomeCut;
   const e = ec(s);
   refreshAccess(s, stream(s.seed, "access", s.year));
@@ -264,7 +267,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
 
   // ---- work
   const working = s.job || s.business || s.school || s.retired;
-  const pendingJob = s.pending.some((d) => d.event === "first_job" || d.event === "after_school" || d.event === "start_business");
+  const pendingJob = s.pending.some((d) => ["first_job", "after_school", "grad_next", "start_business"].includes(d.event));
   if (!working && !pendingJob && s.age >= 15 && s.age < retirementAge(s) && (s.age >= 18 || s.edu !== "none" || !s.flags.firstJobAsked)) {
     if (s.age < 18) s.flags.firstJobAsked = true;
     if (s.age >= 15) enqueue(s, "first_job", s.unemployedYears > 0 ? { title: "Job hunting", body: "You're looking for work." } : {});
@@ -752,6 +755,8 @@ function record(s: LifeState, income: number, spending: number): void {
 // ------------------------------------------------------------------ advance
 
 export function advance(s: LifeState): void {
+  if (s.pending.length) throw new Error("Decisions pending");
+  finishDeskYear(s);
   resolveYear(s);
   if (!s.alive) return;
   s.year++;
@@ -928,5 +933,5 @@ export function realNW(s: LifeState): number {
 }
 
 export function localMoney(s: LifeState, amount: number): string {
-  return money(amount, country(s.country).cur);
+  return fmt(s, amount);
 }

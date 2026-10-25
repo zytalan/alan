@@ -173,6 +173,58 @@ export interface School {
   field?: Field;
 }
 
+export interface DeskPosition {
+  id: string;
+  units: number;
+  cost: number; // total paid, fees included
+  since: number; // month index of the first buy
+  lastPrice: number;
+}
+
+export interface DeskOrder {
+  id: string;
+  inst: string;
+  side: "buy" | "sell";
+  kind: "limit" | "stop";
+  price: number;
+  amount: number; // money to spend on a buy, units to sell
+  placed: number;
+}
+
+export interface DeskTrade {
+  t: number;
+  y?: number; // the year being lived when it happened
+  text: string;
+  pnl?: number;
+}
+
+/** The brokerage account behind the trading desk. Money here counts in net worth but not in savings. */
+export interface DeskState {
+  cash: number;
+  pos: Record<string, DeskPosition>;
+  orders: DeskOrder[];
+  t: number; // prices are as of this month
+  trades: DeskTrade[]; // newest first
+  nextId: number;
+  yearGain: number; // realized gains and dividends this year, for tax
+  stats: {
+    deposited: number;
+    withdrawn: number;
+    flowsReal: number; // net money moved in, in 2021 international dollars at the time it moved
+    costsReal: number; // fees and tax, same units
+    fees: number;
+    dividends: number;
+    taxes: number;
+    realized: number;
+    trades: number;
+    perf: number; // growth of money kept in the account, ignoring deposits and withdrawals (starts at 1)
+    perfPeak: number;
+    drawdown: number; // worst fall of `perf` from a peak, as a share
+    best: { name: string; pnl: number } | null;
+    worst: { name: string; pnl: number } | null;
+  };
+}
+
 export interface LifeState {
   v: 1;
   setup: Setup;
@@ -213,6 +265,7 @@ export interface LifeState {
   holdings: Holdings;
   cashHome: number; // cash kept outside the banking system
   stocks: Stock[];
+  desk: DeskState | null;
   properties: Property[];
   consumerDebt: number;
   studentDebt: number;

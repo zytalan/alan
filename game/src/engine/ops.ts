@@ -4,9 +4,10 @@
 
 import { BIZ, STOCK_IDEAS, TECH_STAGES } from "./content/business";
 import { OCC, OCCUPATIONS, type Occupation } from "./content/occupations";
-import { money } from "./format";
+import { money, usd } from "./format";
 import { capitalControl } from "./history";
-import { econ, toIntl2021, type YearEcon } from "./macro";
+import { econ, intlToUsd, toIntl2021, type YearEcon } from "./macro";
+import { deskValue } from "./markets";
 import type { Rng } from "./rng";
 import {
   ASSET_KEYS, EDU_ORDER, type Allocation, type AssetKey, type BizType, type Edu, type LifeState, type Property,
@@ -32,7 +33,16 @@ export function cur(s: LifeState): string {
   return country(s.country).cur;
 }
 
+/**
+ * Where repeated redenominations leave the local unit meaningless (Brazil before 1993,
+ * the Soviet ruble...), a typical wage is a few units or less; show today's dollars instead.
+ */
+export function localUnitsReadable(s: LifeState, year = s.year): boolean {
+  return W(s, year) >= 10;
+}
+
 export function fmt(s: LifeState, amount: number): string {
+  if (!localUnitsReadable(s)) return `≈${usd(intlToUsd(s.macroSeed, toIntl2021(s.country, s.macroSeed, s.year, amount)))}`;
   return money(amount, cur(s));
 }
 
@@ -86,6 +96,7 @@ export function netWorth(s: LifeState): number {
   return (
     liquid(s) +
     (stockValue(s) - stockValue(s, true)) +
+    deskValue(s) +
     propertyValue(s) +
     businessValue(s) +
     (s.frozen?.amount ?? 0) -
@@ -249,6 +260,12 @@ export function raiseCash(s: LifeState, amount: number): number {
       if (st.value <= 1e-9) st.alive = false;
     }
     s.stocks = s.stocks.filter((st) => st.alive);
+  }
+  if (need > 0 && s.desk && s.desk.cash > 0) {
+    // bills come out of idle cash in the trading account before anyone lends you money
+    const take = Math.min(s.desk.cash, need);
+    s.desk.cash -= take;
+    need -= take;
   }
   return amount - Math.max(0, need);
 }

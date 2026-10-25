@@ -10,6 +10,7 @@ import { pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
 import { econ, type YearEcon } from "./macro";
 import { referenceHealth } from "./mortality";
+import { liquidateDesk, shrinkDesk } from "./desk";
 import {
   adult, buyProperty, buyStock, bump, canStartBusiness, clamp, consumerRate, dev, ec, eduAtLeast, endBusiness, fmt,
   homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay,
@@ -109,6 +110,12 @@ function moneyYears(s: LifeState, amount: number): string {
   return yrs >= 1 ? `${yrs.toFixed(yrs < 10 ? 1 : 0)} years of a typical wage here` : `${Math.round(yrs * 12)} months of a typical wage here`;
 }
 
+/** "an accountant", "a nurse" */
+function aTitle(title: string): string {
+  const t = title.toLowerCase();
+  return `${/^[aeiou]/.test(t) ? "an" : "a"} ${t}`;
+}
+
 function offerLine(of: Offer): string {
   return `${of.title} at ${of.employer}`;
 }
@@ -131,6 +138,7 @@ export function destinations(s: LifeState): string[] {
 
 /** Move to another country: everything converts at the going exchange rate. */
 export function moveCountry(s: LifeState, dest: string, lossShare = 0): void {
+  liquidateDesk(s, "Sold everything before moving abroad");
   const fromFx = ec(s).fx;
   const toFx = econ(dest, s.macroSeed, s.year, s.marketVariant).fx;
   const conv = toFx / fromFx;
@@ -472,7 +480,7 @@ const DEFS: EventDef[] = [
       }
       const of = offers[Number(opt.slice(1))];
       takeJob(s, of);
-      log(s, `You start work as ${of.title.toLowerCase()} at ${of.employer}.`, "milestone");
+      log(s, `You start work as ${aTitle(of.title)} at ${of.employer}.`, "milestone");
     },
   },
   {
@@ -488,7 +496,7 @@ const DEFS: EventDef[] = [
       const raise = of.mult / cur.mult - 1;
       return {
         title: "A job offer",
-        body: `${of.employer[0].toUpperCase()}${of.employer.slice(1)} wants you as ${of.title.toLowerCase()}: ${fmt(s, of.mult * c.w)} a year (${signedPct(raise)}).`,
+        body: `${of.employer[0].toUpperCase()}${of.employer.slice(1)} wants you as ${aTitle(of.title)}: ${fmt(s, of.mult * c.w)} a year (${signedPct(raise)}).`,
         options: [o("take", "Take it"), o("haggle", "Negotiate for more", "Could go either way"), o("stay", "Stay where you are")],
         payload: { of },
       };
@@ -524,7 +532,7 @@ const DEFS: EventDef[] = [
       const sev = s.job!.formal && dev(s) >= 0.5 ? 0.25 * salary(s) : 0;
       return {
         title: "Laid off",
-        body: `${c.e.recession ? "The slump reaches your workplace. " : ""}You lose your job as ${s.job!.title.toLowerCase()}.${sev > 0 ? ` Severance: ${fmt(s, sev)}.` : ""}`,
+        body: `${c.e.recession ? "The slump reaches your workplace. " : ""}You lose your job as ${aTitle(s.job!.title)}.${sev > 0 ? ` Severance: ${fmt(s, sev)}.` : ""}`,
         options: [
           o("quick", "Take the first job you can find", "Lower pay"),
           o("search", "Search properly", "A year without pay, better offers"),
@@ -546,7 +554,7 @@ const DEFS: EventDef[] = [
         const of = offers.sort((a, b) => Math.abs(a.mult - lastMult * 0.85) - Math.abs(b.mult - lastMult * 0.85))[0];
         if (of) {
           takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 0.9) });
-          log(s, `You take a job as ${of.title.toLowerCase()}.`, "neutral");
+          log(s, `You take a job as ${aTitle(of.title)}.`, "neutral");
         }
       } else if (opt === "search") s.flags.searching = s.year + 1;
       else if (opt === "study") enqueue(s, "grad_next");
@@ -571,7 +579,7 @@ const DEFS: EventDef[] = [
       const title = toExec ? "Executive" : toManager ? "Manager" : j.title;
       return {
         title: "A promotion",
-        body: `Your boss offers you ${toManager || toExec ? `a job as ${title.toLowerCase()}` : "a step up"}: ${fmt(s, mult * c.w)} a year, longer hours.`,
+        body: `Your boss offers you ${toManager || toExec ? `a job as ${aTitle(title)}` : "a step up"}: ${fmt(s, mult * c.w)} a year, longer hours.`,
         options: [o("yes", "Accept", `${signedPct(mult / j.mult - 1)} pay`), o("no", "Decline", "Keep your evenings")],
         payload: { mult, occ: toExec ? "executive" : toManager ? "manager" : j.occ, title, from: j.occ, since: s.year - j.years },
       };
@@ -1016,6 +1024,7 @@ const DEFS: EventDef[] = [
     resolve: (s, _c, _p, opt) => {
       if (opt === "bankrupt") {
         const legal = dev(s) >= 0.5;
+        liquidateDesk(s, "The trading account is closed in the bankruptcy");
         const seized = raiseCash(s, Math.max(0, liquid(s) - 0.3 * W(s)));
         s.consumerDebt = legal ? 0 : Math.max(0, s.consumerDebt - seized) * 0.5;
         s.creditLockUntil = s.year + 7;
@@ -1608,6 +1617,7 @@ function stageNameOf(stage: number): string {
 
 /** Lose a share of everything (divorce, court). */
 export function giveAway(s: LifeState, share: number): void {
+  shrinkDesk(s, share);
   for (const k of ASSET_KEYS) s.holdings[k] *= 1 - share;
   s.cashHome *= 1 - share;
   for (const st of s.stocks) st.value *= 1 - share;
