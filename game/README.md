@@ -26,11 +26,29 @@ From 18, with a bank account and a stock market to reach, you can open a brokera
 account and play any year month by month. Move money in from savings, buy and sell
 your country's index fund, the S&P 500 (where capital controls allow) and listed
 companies, set limit and stop-loss orders, and press "run until something happens" to
-skip to the next fill, 10% move or major headline. Orders fill at the month's average
+skip to the next fill, 10% move (30% for coins) or major headline. Orders fill at the month's average
 price plus a spread and the commission of the era (1.5% before 1975, 0.05% today);
 index funds charge the fees of their day and pay dividends. There is no borrowing and
 no short selling. Leave the desk and the rest of the year plays out on its own; gains
 are taxed at year end and the account counts in your net worth.
+
+Coins trade there too: Bitcoin from August 2010, then Litecoin, Ether, XRP, Dogecoin,
+Solana and LUNA as each reached a big exchange, at their real monthly averages. Early
+coin markets were thin, so spreads start at four times today's and the exchange fee at
+Mt. Gox's 0.6%. Coins stay on the exchange unless you move them to your own wallet for
+a 0.2% network fee. An exchange can fail with them inside: Mt. Gox in 2014 (a fifth of
+the coins came back in 2024), QuadrigaCX in Canada in 2019, Thodex in Turkey in 2021
+and FTX in 2022 (repaid in cash in 2025, at 119% of their November 2022 value). A
+wallet survives all of that, but about one in a hundred loses its keys each year. Where
+banks wouldn't serve exchanges (China 2017–2021, India 2018–2020, Nigeria 2021–2023)
+coins change hands person to person, about 2% worse each way. Where they were banned
+outright (China since September 2021, Bolivia 2014–2024, Bangladesh, Nepal, Morocco,
+Iraq, Algeria, Qatar, Egypt, Afghanistan) you can only sell what you already hold, and
+your savings plan can't buy them either. The coins in your savings plan use the same
+exchange, so a failure takes what you left on it in both places, and repays both.
+After the data ends, Bitcoin's months end each year at the price your savings use; the
+other coins follow Bitcoin with their own swings and a small yearly chance of
+collapsing, as LUNA did in May 2022.
 
 Companies are fictional, but each belongs to a real US industry and moves with it
 month by month (Kenneth French's 49 industry portfolios since 1926), on top of your
@@ -110,6 +128,7 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 | Jordà–Schularick–Taylor Macrohistory Database (R6) | stock, bond and housing total returns, rental yields and banking crises for 18 countries, 1870–2020 | CC BY-NC-SA 4.0 (non-commercial) |
 | Aswath Damodaran, NYU Stern | US stocks, bills, bonds, home prices and gold, 1928–2025 | free with attribution |
 | blockchain.com charts API | Bitcoin price from 2010 | check terms before commercial use |
+| Kraken public market data API | weekly prices of Litecoin, Ether, XRP, Dogecoin, Solana and LUNA, for the desk | Kraken terms; check before commercial use |
 | OECD Financial Market statistics, monthly | share price indices for 45 countries, for the trading desk | OECD terms, attribution |
 | Robert J. Shiller, Irrational Exuberance data | monthly S&P 500 prices and dividends since 1871 | free, cite Shiller |
 | Kenneth R. French Data Library | monthly returns of 49 US industry portfolios since 1926 | free, cite the library |
@@ -117,7 +136,8 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 
 `src/engine/history.ts` adds what the datasets don't carry: headline events, deposit
 freezes (Brazil 1990, Argentina 2001, Cyprus 2013, Lebanon 2019…), wars before 1989,
-capital controls, university closures and pyramid-scheme waves. The Shanghai Composite's
+capital controls, university closures, pyramid-scheme waves, and crypto's own record:
+exchange failures and repayments, national bans and the big price headlines. The Shanghai Composite's
 1990s closes are filled in by hand because the OECD series starts in 2000.
 
 What is simulated rather than replayed: markets in countries with no stock-market data,

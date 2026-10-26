@@ -254,6 +254,37 @@ def load_french_industries() -> tuple[list[str], dict[int, list[float | None]]]:
     return names, rows
 
 
+COINS = [("BTC", None), ("LTC", "ltc"), ("ETH", "eth"), ("XRP", "xrp"), ("DOGE", "doge"), ("SOL", "sol"), ("LUNA", "luna")]
+
+
+def load_coins() -> dict[str, dict[int, float]]:
+    """Monthly average USD prices: Bitcoin from blockchain.com's daily series since 2010, the
+    other coins from Kraken's weekly candles, each from its first weeks on that exchange."""
+    today = dt.date.today()
+    this_month = month_index(today.year, today.month)  # still in progress: left out
+    out: dict[str, dict[int, float]] = {}
+    days: dict[int, list[float]] = {}
+    for v in json.loads((RAW / "btc_market_price.json").read_text())["values"]:
+        if v["y"] > 0:
+            d = dt.datetime.fromtimestamp(v["x"], dt.UTC)
+            days.setdefault(month_index(d.year, d.month), []).append(v["y"])
+    out["BTC"] = {k: sum(v) / len(v) for k, v in days.items() if len(v) >= 10 and k < this_month}
+    for sym, key in COINS[1:]:
+        data = json.loads((RAW / f"kraken_{key}.json").read_text())
+        if data.get("error"):
+            raise SystemExit(f"Kraken {key}: {data['error']}")
+        rows = next(v for k, v in data["result"].items() if k != "last")
+        weeks: dict[int, list[float]] = {}
+        for t, _o, _h, _l, c, vwap, *_ in rows:
+            mid = dt.datetime.fromtimestamp(t + 3.5 * 86400, dt.UTC)  # a week counts in the month it mostly falls in
+            px = float(vwap) if float(vwap) > 0 else float(c)
+            if px > 0:
+                weeks.setdefault(month_index(mid.year, mid.month), []).append(px)
+        first = min(weeks)
+        out[sym] = {k: sum(v) / len(v) for k, v in weeks.items() if k < this_month and (k > first or len(v) >= 2)}
+    return out
+
+
 def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, isos: set[str]) -> dict:
     """Monthly market history for the trading desk, loaded only when a player opens it."""
     price, div = load_shiller()
@@ -277,11 +308,13 @@ def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, 
             if len(dp):
                 dy[iso] = [int(dp.index.min()), [rnd(dp.get(y), 4) for y in range(int(dp.index.min()), int(dp.index.max()) + 1)]]
     s = min(ind)
+    coins = load_coins()
     return {
         "v": 1,
         "generated": dt.date.today().isoformat(),
         "m0": M0,
         "share": {k: v for k, v in sorted(share.items()) if v},
+        "cc": {sym: packed(coins[sym], 5) for sym, _ in COINS},
         "usDiv": packed(usdiv, 4),
         "dy": dy,
         "ind": {
@@ -294,6 +327,8 @@ def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, 
             "Robert J. Shiller, Irrational Exuberance data: S&P composite and dividends (shillerdata.com)",
             "Kenneth R. French Data Library: 49 industry portfolios, value-weighted monthly returns",
             "Jorda-Schularick-Taylor Macrohistory Database R6: dividend yields",
+            "blockchain.com charts API: daily Bitcoin market price, averaged by month",
+            "Kraken public OHLC data: weekly prices of LTC, ETH, XRP, DOGE, SOL and LUNA, averaged by month",
         ],
     }
 

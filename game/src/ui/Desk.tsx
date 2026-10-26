@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  buy, cancelOrder, commissionRate, companyById, deposit, deskAccess, deskValue, deskYearEnd, fmt, fmtPrice, fmtUnits,
+  buy, cancelOrder, companyById, deposit, deskAccess, deskValue, deskYearEnd, feeRate, fmt, fmtPrice, fmtUnits,
   headlines, instrumentName, isRealMonth, liquid, memories, monthLabel, monthsPlayed, pct, placeOrder, priceOf, quote,
-  quoteBuy, quoteSell, runUntilSomething, sectorLabel, sell, stepMonth, tradable, withdraw, yearOfT, yearStartT,
-  type LifeState,
+  quoteBuy, quoteSell, runUntilSomething, sectorLabel, sell, setCustody, stepMonth, tradable, WALLET_FEE, withdraw, yearOfT,
+  yearStartT, type LifeState,
 } from "../engine";
 import { useWidth } from "./charts";
 
@@ -98,8 +98,8 @@ export function Desk({ s, version, refresh, onClose, onFinishYear }: {
             <b className="num">{fmt(s, liquid(s))}</b>
           </div>
           <div>
-            <span className="eyebrow">Commission now</span>
-            <b className="num">{pct(commissionRate(s.year), commissionRate(s.year) < 0.01 ? 2 : 1)}</b>
+            <span className="eyebrow">{selected.startsWith("cc:") ? "Exchange fee now" : "Commission now"}</span>
+            <b className="num">{pct(feeRate(selected, yearOfT(d.t)), feeRate(selected, yearOfT(d.t)) < 0.01 ? 2 : 1)}</b>
           </div>
         </section>
         {notice.length > 0 && (
@@ -110,6 +110,7 @@ export function Desk({ s, version, refresh, onClose, onFinishYear }: {
           </div>
         )}
         {!access.ok && <p className="note">{access.reason}.</p>}
+        {access.cryptoNote && <p className="note">{access.cryptoNote}.</p>}
         <div className="dk-grid">
           <Watchlist s={s} list={list} held={held} sel={selected} onSelect={setSel} />
           <section className="card dk-chart-card" aria-label="Price chart">
@@ -153,15 +154,20 @@ function Change({ x }: { x: number }) {
   );
 }
 
+const GROUPS = ["Funds", "Crypto", "Companies"]; // the few coins before the many companies
+
 function Watchlist({ s, list, held, sel, onSelect }: { s: LifeState; list: ReturnType<typeof tradable>; held: string[]; sel: string; onSelect: (id: string) => void }) {
   const t = s.desk!.t;
-  const rows = [...list.map((i) => ({ id: i.id, name: i.name, sub: i.sub })), ...held.map((id) => ({ id, name: instrumentName(s, id), sub: "No longer trades here" }))];
+  const group = (id: string) => (id.startsWith("cc:") ? "Crypto" : id.startsWith("co:") ? "Companies" : "Funds");
+  const rows = [...list.map((i) => ({ id: i.id, name: i.name, sub: i.sub })), ...held.map((id) => ({ id, name: instrumentName(s, id), sub: "Can't be bought here now" }))]
+    .map((r, k) => ({ ...r, k, g: group(r.id) }))
+    .sort((a, b) => GROUPS.indexOf(a.g) - GROUPS.indexOf(b.g) || a.k - b.k);
   return (
     <section className="card dk-watch" aria-label="What you can trade">
       <span className="eyebrow">What you can trade</span>
       {rows.length === 0 && <p className="note">Nothing yet.</p>}
       <ul>
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const px = priceOf(r.id, s.macroSeed, t, s.country);
           const prev = priceOf(r.id, s.macroSeed, t - 1, s.country);
           const hist: number[] = [];
@@ -171,6 +177,7 @@ function Watchlist({ s, list, held, sel, onSelect }: { s: LifeState; list: Retur
           }
           return (
             <li key={r.id}>
+              {(i === 0 || rows[i - 1].g !== r.g) && <span className="dk-group">{r.g}</span>}
               <button className={`dk-row${r.id === sel ? " sel" : ""}`} aria-pressed={r.id === sel} onClick={() => onSelect(r.id)}>
                 <span className="dk-nm">
                   <span>{r.name}</span>
@@ -279,7 +286,7 @@ function PriceChart({ s, id }: { s: LifeState; id: string }) {
     <div className="dk-chart">
       <div className="dk-chart-head">
         <div>
-          <span className="eyebrow">{company ? sectorLabel(company.sector) : id === "spx" ? "US stocks, priced in your currency" : "Index fund"}</span>
+          <span className="eyebrow">{company ? sectorLabel(company.sector) : id === "spx" ? "US stocks, priced in your currency" : id.startsWith("cc:") ? "Crypto, priced in your currency" : "Index fund"}</span>
           <h3>{name}</h3>
         </div>
         <div className="seg" role="group" aria-label="Range">
@@ -428,7 +435,7 @@ function Ticket({ s, id, refresh, onNotice }: { s: LifeState; id: string; refres
   const effSide: Side = kind === "stop" ? "sell" : side;
   const q = effSide === "buy" ? quoteBuy(s, id, Math.min(amt, d.cash)) : quoteSell(s, id, Math.min(amt, pos?.units ?? 0));
   const reason =
-    !id ? "Pick something to trade" : effSide === "buy" && !canTrade ? "This doesn't trade here any more" : effSide === "buy" && d.cash <= 0 ? "Move money into the account first" : effSide === "sell" && !pos ? "You don't own any" : amt <= 0 ? (effSide === "buy" ? "Enter an amount to spend" : "Enter how many to sell") : kind !== "now" && lim <= 0 ? "Enter a price" : null;
+    !id ? "Pick something to trade" : effSide === "buy" && !canTrade ? (id.startsWith("cc:") ? "Coins can't be bought here now" : "This doesn't trade here any more") : effSide === "buy" && d.cash <= 0 ? "Move money into the account first" : effSide === "sell" && !pos ? "You don't own any" : amt <= 0 ? (effSide === "buy" ? "Enter an amount to spend" : "Enter how many to sell") : kind !== "now" && lim <= 0 ? "Enter a price" : null;
 
   const submit = () => {
     if (reason) return;
@@ -493,7 +500,7 @@ function Ticket({ s, id, refresh, onNotice }: { s: LifeState; id: string; refres
         <dl className="dk-quote">
           <dt>{effSide === "buy" ? "You get" : "You sell"}</dt>
           <dd className="num">{fmtUnits(q.units)} at {fmtPrice(q.price)}</dd>
-          <dt>Commission</dt>
+          <dt>{id.startsWith("cc:") ? "Exchange fee" : "Commission"}</dt>
           <dd className="num">{fmt(s, q.commission)}</dd>
           <dt>{effSide === "buy" ? "Cash out" : "Cash in"}</dt>
           <dd className="num">{fmt(s, q.net)}</dd>
@@ -502,6 +509,33 @@ function Ticket({ s, id, refresh, onNotice }: { s: LifeState; id: string; refres
       <button className="btn primary" onClick={submit} disabled={!!reason} title={reason ?? undefined}>
         {reason ?? (kind === "now" ? (effSide === "buy" ? `Buy for ${fmt(s, Math.min(amt, d.cash))}` : `Sell ${fmtUnits(Math.min(amt, pos?.units ?? 0))}`) : "Place the order")}
       </button>
+      {id.startsWith("cc:") && pos && (
+        <div className="dk-custody">
+          <span className="eyebrow" id="dk-custody-label">
+            Where your coins are
+          </span>
+          <div className="seg dk-seg" role="group" aria-labelledby="dk-custody-label">
+            {(["exchange", "wallet"] as const).map((where) => (
+              <button
+                key={where}
+                aria-pressed={(pos.custody ?? "exchange") === where}
+                onClick={() => {
+                  if (setCustody(s, id, where)) onNotice([d.trades[0]?.text ?? "Moved."]);
+                  refresh();
+                }}
+              >
+                {where === "exchange" ? "On the exchange" : "In your own wallet"}
+              </button>
+            ))}
+          </div>
+          <span className="note">
+            {pos.custody === "wallet"
+              ? "Safe if an exchange fails, but lose the keys and the coins are gone. Selling sends them back to the exchange first."
+              : "Exchanges can freeze or fail with your coins inside, as Mt. Gox did in 2014 and FTX in 2022."}{" "}
+            Moving costs a {pct(WALLET_FEE, 1)} network fee.
+          </span>
+        </div>
+      )}
       <div className="dk-move">
         <span className="eyebrow">Move money</span>
         <input id="dk-move" type="text" inputMode="decimal" value={move} onChange={(e) => setMove(e.target.value)} placeholder="Amount" aria-label="Amount to move" />
@@ -572,6 +606,7 @@ function Positions({ s, refresh, onSelect }: { s: LifeState; refresh: () => void
                         <button className="dk-link" onClick={() => onSelect(p.id)}>
                           {instrumentName(s, p.id)}
                         </button>
+                        {p.custody === "wallet" && <small className="dk-tag">wallet</small>}
                       </td>
                       <td>{fmtUnits(p.units)}</td>
                       <td className="dk-hide-s">{fmt(s, p.cost)}</td>

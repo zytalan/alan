@@ -724,6 +724,10 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 .dk-hist li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; }
 .dk-hist .num { color: var(--muted); }
 .dk-gain { color: var(--gain); }
+.dk-group { display: block; padding: 10px 6px 4px; font: 600 11px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.dk-watch li:first-child .dk-group { padding-top: 2px; }
+.dk-custody { display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 10px; }
+.dk-tag { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 11px; color: var(--muted); }
 .dk-loss { color: var(--stamp); }
 .dk-stats { border-top: 1px solid var(--rule); padding-top: 10px; }
 .dk-news ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); }

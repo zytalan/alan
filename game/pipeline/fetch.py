@@ -12,6 +12,7 @@ Sources
 - blockchain.com charts API: Bitcoin market price
 - Robert Shiller's ie_data.xls: monthly S&P 500 prices and dividends since 1871
 - Kenneth French Data Library: monthly returns of 49 US industry portfolios since 1926
+- Kraken public market data: weekly prices of six more coins, each from its first week on Kraken
 """
 
 from __future__ import annotations
@@ -75,6 +76,10 @@ SHILLER_FALLBACK = (
     "https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/downloads/"
     "1449043e-a1ed-4e2e-8e9c-7b9a2a064493/ie_data.xls"
 )
+# weekly candles; Kraken returns up to 720 of them, which reaches back to each pair's first week
+KRAKEN_PAIRS = {"ltc": "LTCUSD", "eth": "ETHUSD", "xrp": "XRPUSD", "doge": "XDGUSD", "sol": "SOLUSD", "luna": "LUNAUSD"}
+for key, pair in KRAKEN_PAIRS.items():
+    URLS[f"kraken_{key}.json"] = f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval=10080"
 for key, code in WB_INDICATORS.items():
     URLS[f"wb_{key}.json"] = (
         f"https://api.worldbank.org/v2/country/all/indicator/{code}"

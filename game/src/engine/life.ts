@@ -9,11 +9,11 @@ import { OCC } from "./content/occupations";
 import { finishDeskYear, markDeskYearStart } from "./desk";
 import { enqueue, EVENT_MAP, EVENTS, destinations, rentIncome, syncAllocation, type EventCtx } from "./events";
 import { oneIn, pct, topPercent } from "./format";
-import { DEPOSIT_SHOCKS, EXCHANGE_FAILURES, notesFor } from "./history";
+import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
-  addMove, adult, buyProperty, buyStock, bump, clamp, consumerRate, creditLimit, dev, ec, endBusiness, fmt, gainsTaxRate, homePrice,
+  addMove, adult, buyProperty, buyStock, bump, caughtInFailure, clamp, consumerRate, creditLimit, dev, ec, endBusiness, fmt, gainsTaxRate, homePrice,
   incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay, priceToIncome, propertyValue, raiseCash, rebalance,
   realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock, stockValue, totalDebt, usdPremium,
 } from "./ops";
@@ -383,10 +383,17 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     s.frozen = null;
   }
   if (s.holdings.crypto > 0) {
-    const fail = EXCHANGE_FAILURES.find((f) => f.year === s.year);
-    if (fail && s.cryptoCustody === "exchange" && r.chance(fail.exposure)) {
-      log(s, `${fail.name} collapses with your coins inside. ${fmt(s, s.holdings.crypto)} gone.`, "bad");
-      addMove(s, `ev:${fail.name} collapses`, -s.holdings.crypto);
+    const fail = CRYPTO_FAILURES.find((f) => f.at[0] === s.year && (!f.where || f.where.includes(s.country)));
+    if (fail && s.cryptoCustody === "exchange" && caughtInFailure(s, fail)) {
+      const lost = s.holdings.crypto;
+      log(s, `${fail.name} collapses with your coins inside. ${fmt(s, lost)} gone${fail.repay ? ", for now" : ""}.`, "bad");
+      addMove(s, `ev:${fail.name} collapses`, -lost);
+      if (fail.repay) {
+        // the claim is kept in coins, or in dollars at about the price when it failed
+        const p = ec(s, s.year - 1);
+        const coins = p.btc ? lost / (p.btc * p.fx) : 0;
+        s.flags[`claim:${fail.name}`] = fail.repay.share * coins * (fail.repay.kind === "coins" ? 1 : (e.btc ?? p.btc ?? 0));
+      }
       s.holdings.crypto = 0;
       syncAllocation(s);
     } else if (s.cryptoCustody === "self" && r.chance(0.01)) {
@@ -395,6 +402,19 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       s.holdings.crypto = 0;
       syncAllocation(s);
     }
+  }
+  for (const f of CRYPTO_FAILURES) {
+    const claim = Number(s.flags[`claim:${f.name}`] ?? 0);
+    if (!f.repay || !claim || s.year < f.repay.at[0]) continue;
+    delete s.flags[`claim:${f.name}`];
+    const p = ec(s, s.year - 1);
+    const value = f.repay.kind === "coins" ? claim * (p.btc ?? 0) * p.fx : claim * p.fx;
+    if (f.repay.kind === "coins" && s.access.crypto) {
+      s.holdings.crypto += value;
+      syncAllocation(s);
+    } else invest(s, value);
+    addMove(s, `ev:${f.name} repays`, value);
+    log(s, `${f.repay.text.replace(/\.$/, "")} (${fmt(s, value)}).`, "good");
   }
   if (s.flags.loanBack === s.year) {
     invest(s, Number(s.flags.loanAmt));

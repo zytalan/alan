@@ -1,6 +1,7 @@
 // Monthly market history for the trading desk. Where the data has real monthly
-// prices (OECD share indices, Shiller's S&P 500, Kenneth French's US industries)
-// the desk replays them; everywhere else — countries without data, gaps, and
+// prices (OECD share indices, Shiller's S&P 500, Kenneth French's US industries,
+// blockchain.com's and Kraken's coin prices) the desk replays them; everywhere
+// else — countries without data, gaps, and
 // every year after the data ends — the twelve months are drawn so they compound
 // exactly to the yearly return the life engine already uses. Draws come from
 // streams keyed by the life's macroSeed, so the market is part of the world:
@@ -19,6 +20,7 @@ export interface MarketsData {
   usDiv: [number, (number | null)[]]; // S&P 500 dividends, annualized, aligned with share.USA
   dy: Record<string, [number, (number | null)[]]>; // yearly dividend yields (JST)
   ind: { start: number; names: string[]; r: Record<string, (number | null)[]> }; // % × 100
+  cc?: Record<string, [number, (number | null)[]]>; // coins: monthly average USD prices
   sources: string[];
 }
 
@@ -393,9 +395,116 @@ export function companyPrice(c: Company, macroSeed: number, t: number): number |
   return companyPath(c, macroSeed)[t - c.listT];
 }
 
+// ------------------------------------------------------------------ coins
+
+export interface CoinDef {
+  sym: string;
+  name: string;
+  spread: number; // bid-ask spread on a big exchange today
+  // once the data ends: how it swings with Bitcoin, its own volatility and drift, and a yearly chance of collapse
+  beta: number;
+  vol: number;
+  drift: number;
+  hazard: number;
+}
+
+export const COINS: CoinDef[] = [
+  { sym: "BTC", name: "Bitcoin", spread: 0.002, beta: 1, vol: 0, drift: 0, hazard: 0 },
+  { sym: "ETH", name: "Ether", spread: 0.003, beta: 1.15, vol: 0.35, drift: 0.04, hazard: 0.01 },
+  { sym: "LTC", name: "Litecoin", spread: 0.005, beta: 1.05, vol: 0.4, drift: 0, hazard: 0.03 },
+  { sym: "XRP", name: "XRP", spread: 0.005, beta: 1.1, vol: 0.5, drift: 0.04, hazard: 0.03 },
+  { sym: "DOGE", name: "Dogecoin", spread: 0.006, beta: 1.2, vol: 0.6, drift: 0.05, hazard: 0.04 },
+  { sym: "SOL", name: "Solana", spread: 0.005, beta: 1.3, vol: 0.5, drift: 0.05, hazard: 0.03 },
+  { sym: "LUNA", name: "LUNA (Terra)", spread: 0.01, beta: 1, vol: 0.5, drift: 0, hazard: 0 },
+];
+const COIN = Object.fromEntries(COINS.map((c) => [c.sym, c]));
+
+export function coinDef(sym: string): CoinDef | null {
+  return COIN[sym] ?? null;
+}
+
+/** Monthly log returns adding up to `total` over n months, with fat tails. */
+function bridgeN(r: Rng, total: number, n: number, sd: number): number[] {
+  if (n <= 0) return [];
+  const z = Array.from({ length: n }, () => r.fat(0, 1));
+  const zbar = z.reduce((a, b) => a + b, 0) / n;
+  return z.map((x) => total / n + sd * (x - zbar));
+}
+
+/** A coin's recorded months, and the last one: NaN where it has no data. */
+function coinData(sym: string): { px: Float64Array; last: number } {
+  const px = new Float64Array(N_MONTHS).fill(NaN);
+  let last = -1;
+  const series = MD?.cc?.[sym];
+  if (series) {
+    for (let t = 0; t < N_MONTHS; t++) {
+      const v = dataAt(series, t);
+      if (v != null && v > 0) {
+        px[t] = v;
+        last = t;
+      }
+    }
+  }
+  return { px, last };
+}
+
+/**
+ * Bitcoin in US dollars, month by month: the recorded monthly averages, then months that end
+ * each year at the life engine's year-end price, so the desk and your savings hold the same coin.
+ */
+function btcPath(macroSeed: number): Float64Array {
+  return memo(`cc|BTC|${macroSeed}`, () => {
+    const { px, last } = coinData("BTC");
+    let t = last;
+    for (let y = 2010; t < 0 && y <= LAST_YEAR; y++) {
+      const b = econ("USA", macroSeed, y).btc;
+      if (b) px[(t = tOf(y, 12))] = b;
+    }
+    while (t >= 0 && t < N_MONTHS - 1) {
+      const y = yearOfT(t + 1);
+      const end = Math.min(tOf(y, 12), N_MONTHS - 1);
+      const target = econ("USA", macroSeed, y).btc ?? px[t];
+      const steps = bridgeN(stream(macroSeed, "coinmonths", "BTC", y), Math.log(target / px[t]), end - t, 0.18);
+      for (let i = 0; i < steps.length; i++) px[t + i + 1] = px[t + i] * Math.exp(steps[i]);
+      t = end;
+    }
+    return px;
+  });
+}
+
+/** Other coins: recorded months, then Bitcoin's moves amplified, their own luck, and a chance of collapse. */
+function altPath(c: CoinDef, macroSeed: number): Float64Array {
+  return memo(`cc|${c.sym}|${macroSeed}`, () => {
+    const { px, last } = coinData(c.sym);
+    if (last < 0) return px;
+    const btc = btcPath(macroSeed);
+    const sd = c.vol / Math.sqrt(12);
+    let dead = false;
+    for (let t = last + 1; t < N_MONTHS; t++) {
+      const r = stream(macroSeed, "coinmonth", c.sym, t);
+      let lr = c.beta * Math.log(btc[t] / btc[t - 1]) + c.drift / 12 - (sd * sd) / 2 + sd * r.fat(0, 1);
+      if (dead) lr = 0.3 * sd * r.normal(); // a dead coin lingers near where it fell
+      else if (r.chance(c.hazard / 12)) {
+        dead = true;
+        lr = Math.log(0.03); // most of the value gone in a month, as with LUNA
+      }
+      px[t] = px[t - 1] * Math.exp(clamp(lr, -4, 1.5));
+    }
+    return px;
+  });
+}
+
+/** A coin's price in US dollars at month t, or null before it trades. */
+export function coinUsd(sym: string, macroSeed: number, t: number): number | null {
+  const c = COIN[sym];
+  if (!c || t < 0 || t >= N_MONTHS) return null;
+  const v = (sym === "BTC" ? btcPath(macroSeed) : altPath(c, macroSeed))[t];
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 // ------------------------------------------------------------------ instruments
 
-export type InstKind = "index" | "spx" | "company";
+export type InstKind = "index" | "spx" | "company" | "coin";
 
 export interface Instrument {
   id: string;
@@ -415,7 +524,7 @@ export function indexName(iso: string): string {
 }
 
 /** What a player in `iso` can trade at month t. */
-export function instruments(iso: string, macroSeed: number, t: number, access: { local: boolean; global: boolean }): Instrument[] {
+export function instruments(iso: string, macroSeed: number, t: number, access: { local: boolean; global: boolean; crypto?: boolean }): Instrument[] {
   const out: Instrument[] = [];
   if (access.local) out.push({ id: `idx:${iso}`, kind: "index", name: `${indexName(iso)} fund`, sub: "Index fund" });
   if (access.global && iso !== "USA") out.push({ id: "spx", kind: "spx", name: "S&P 500 fund", sub: "US stocks, in dollars" });
@@ -423,6 +532,9 @@ export function instruments(iso: string, macroSeed: number, t: number, access: {
     for (const c of companies(iso, macroSeed)) {
       if (t >= c.listT && t <= c.endT) out.push({ id: c.id, kind: "company", name: c.name, sub: SECTOR[c.sector].label, company: c });
     }
+  }
+  if (access.crypto) {
+    for (const c of COINS) if (coinUsd(c.sym, macroSeed, t) != null) out.push({ id: `cc:${c.sym}`, kind: "coin", name: c.name, sub: `Crypto · ${c.sym}` });
   }
   return out;
 }
@@ -434,6 +546,10 @@ export function sectorLabel(key: string): string {
 /** Price of an instrument in month t, in the local currency of `home`. Null when it doesn't trade. */
 export function priceOf(id: string, macroSeed: number, t: number, home: string): number | null {
   if (id === "spx") return indexLevel("USA", macroSeed, t) * fxAt(home, macroSeed, t);
+  if (id.startsWith("cc:")) {
+    const usd = coinUsd(id.slice(3), macroSeed, t);
+    return usd == null ? null : usd * fxAt(home, macroSeed, t);
+  }
   if (id.startsWith("idx:")) return indexLevel(id.slice(4), macroSeed, t);
   const c = companyById(id, macroSeed);
   return c ? companyPrice(c, macroSeed, t) : null;
@@ -450,6 +566,7 @@ export function monthlyDividendRate(id: string, t: number): number {
 export function isRealMonth(id: string, macroSeed: number, t: number): boolean {
   if (id === "spx") return indexPath("USA", macroSeed).real[t] === 1;
   if (id.startsWith("idx:")) return indexPath(id.slice(4), macroSeed).real[t] === 1;
+  if (id.startsWith("cc:")) return dataAt(MD?.cc?.[id.slice(3)], t) != null;
   return false;
 }
 

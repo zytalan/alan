@@ -5,10 +5,10 @@
 import { BIZ, STOCK_IDEAS, TECH_STAGES } from "./content/business";
 import { OCC, OCCUPATIONS, type Occupation } from "./content/occupations";
 import { money, usd } from "./format";
-import { capitalControl } from "./history";
+import { capitalControl, cryptoBan } from "./history";
 import { econ, intlToUsd, toIntl2021, type YearEcon } from "./macro";
 import { deskValue } from "./markets";
-import type { Rng } from "./rng";
+import { stream, type Rng } from "./rng";
 import {
   ASSET_KEYS, EDU_ORDER, type Allocation, type AssetKey, type BizType, type Edu, type LifeState, type Property,
   type Stats, type Stock, type Tone,
@@ -16,6 +16,11 @@ import {
 import { country, devLevel, nearest } from "./world";
 
 export const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
+
+/** Whether this life's coins were on an exchange when it failed: one draw per life and exchange, for savings and the trading account alike. */
+export function caughtInFailure(s: LifeState, f: { name: string; exposure: number }): boolean {
+  return stream(s.seed, "exchange", f.name).next() < f.exposure;
+}
 
 export function ec(s: LifeState, year = s.year): YearEcon {
   return econ(s.country, s.macroSeed, year, s.marketVariant);
@@ -167,7 +172,7 @@ export function refreshAccess(s: LifeState, r: Rng): void {
   a.globalEq =
     a.bank && s.age >= 18 && y >= 1975 && control !== "closed" && (d >= 0.75 || (y >= 2012 && d >= 0.35) || rich);
   a.globalFriction = control === "quota" ? 0.015 : d >= 0.75 ? 0.001 : 0.005;
-  a.crypto = y >= 2011 && s.age >= 16 && (a.bank || d >= 0.45);
+  a.crypto = y >= 2011 && s.age >= 16 && (a.bank || d >= 0.45) && cryptoBan(s.country, y, 7)?.kind !== "closed";
   const mortgageMarket =
     s.country === "CHN" ? y >= 1998 : s.country === "RUS" ? y >= 2005 : d >= 0.45 || (y >= 2000 && d >= 0.3);
   a.mortgage = a.bank && mortgageMarket && y >= s.creditLockUntil;

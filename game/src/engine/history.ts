@@ -127,14 +127,32 @@ export interface MonthNews {
   text: string;
   iso?: string[];
   major?: boolean;
+  crypto?: boolean; // shown to people who hold coins, and kept off the stock charts
 }
 
 /** A year's dated headlines for a country (worldwide ones included), in calendar order. */
 export function monthNewsFor(iso: string, year: number): MonthNews[] {
-  return MONTH_NEWS.filter((n) => n.y === year && (!n.iso || n.iso.includes(iso))).sort((a, b) => a.m - b.m);
+  return MONTH_NEWS.filter((n) => n.y === year && !n.crypto && (!n.iso || n.iso.includes(iso))).sort((a, b) => a.m - b.m);
 }
 
 export const MONTH_NEWS: MonthNews[] = [
+  // crypto, checked against blockchain.com's daily prices and Kraken's weekly ones
+  { y: 2013, m: 11, text: "30 Nov · Bitcoin passes $1,000 for the first time.", crypto: true },
+  { y: 2014, m: 2, text: "Feb · Mt. Gox, the biggest Bitcoin exchange, halts withdrawals and goes bankrupt.", crypto: true },
+  { y: 2017, m: 9, text: "Sep · China orders its crypto exchanges to close.", iso: ["CHN"], crypto: true },
+  { y: 2017, m: 12, text: "17 Dec · Bitcoin nears $20,000, then starts to fall.", crypto: true },
+  { y: 2018, m: 12, text: "Dec · Bitcoin sinks to about $3,200, more than 80% below its peak a year earlier.", crypto: true },
+  { y: 2019, m: 1, text: "Jan · QuadrigaCX, Canada's largest crypto exchange, collapses after its founder's death.", iso: ["CAN"], crypto: true },
+  { y: 2021, m: 4, text: "14 Apr · Bitcoin peaks near $64,000 as Coinbase lists its shares.", crypto: true },
+  { y: 2021, m: 4, text: "Apr · Thodex, a Turkish crypto exchange, shuts down and its founder flees.", iso: ["TUR"], crypto: true },
+  { y: 2021, m: 5, text: "May · China moves against crypto mining. Bitcoin falls almost by half from its April peak.", crypto: true },
+  { y: 2021, m: 9, text: "24 Sep · China bans all crypto transactions.", crypto: true },
+  { y: 2021, m: 11, text: "9 Nov · Bitcoin peaks near $68,000.", crypto: true },
+  { y: 2022, m: 5, text: "May · TerraUSD loses its dollar peg. LUNA falls from about $86 to a fraction of a cent within a week.", crypto: true },
+  { y: 2022, m: 11, text: "Nov · FTX, one of the biggest crypto exchanges, freezes withdrawals and collapses.", crypto: true },
+  { y: 2024, m: 1, text: "10 Jan · US regulators approve the first exchange-traded funds that hold bitcoin.", crypto: true },
+  { y: 2024, m: 12, text: "5 Dec · Bitcoin passes $100,000.", crypto: true },
+  { y: 2025, m: 10, text: "Oct · Bitcoin tops $124,000, a new high.", crypto: true },
   { y: 1971, m: 8, text: "15 Aug · Nixon closes the gold window. The dollar floats.", major: true },
   { y: 1973, m: 10, text: "17 Oct · Arab oil producers announce an embargo. Oil prices quadruple.", major: true },
   { y: 1974, m: 8, text: "9 Aug · Nixon resigns." },
@@ -261,8 +279,59 @@ export function capitalControl(iso: string, year: number): "open" | "closed" | "
   return c ? c.kind : "open";
 }
 
-/** Bitcoin exchange failures: share of coins held on exchanges that were lost. */
-export const EXCHANGE_FAILURES: { year: number; name: string; exposure: number }[] = [
-  { year: 2014, name: "Mt. Gox", exposure: 0.7 },
-  { year: 2022, name: "FTX", exposure: 0.15 },
+/**
+ * Where crypto trading was banned outright, or cut off from the banks so that only
+ * person-to-person deals and exchanges abroad were left. Simplified to the start and end months.
+ */
+export const CRYPTO_BANS: { iso: string; from: [number, number]; to?: [number, number]; kind: "closed" | "p2p"; text: string }[] = [
+  { iso: "CHN", from: [2017, 9], to: [2021, 8], kind: "p2p", text: "China orders its crypto exchanges to close. Trading moves to person-to-person deals and exchanges abroad." },
+  { iso: "CHN", from: [2021, 9], kind: "closed", text: "China bans all crypto transactions." },
+  { iso: "IND", from: [2018, 4], to: [2020, 2], kind: "p2p", text: "India's central bank bars banks from serving crypto exchanges." },
+  { iso: "NGA", from: [2021, 2], to: [2023, 12], kind: "p2p", text: "Nigeria's central bank orders banks to close crypto exchanges' accounts." },
+  { iso: "BGD", from: [2014, 9], kind: "closed", text: "Bangladesh's central bank warns that dealing in bitcoin can be punished by law." },
+  { iso: "BOL", from: [2014, 5], to: [2024, 6], kind: "closed", text: "Bolivia's central bank bans bitcoin." },
+  { iso: "NPL", from: [2017, 8], kind: "closed", text: "Nepal's central bank declares crypto trading illegal." },
+  { iso: "MAR", from: [2017, 11], kind: "closed", text: "Morocco bans crypto transactions." },
+  { iso: "IRQ", from: [2017, 12], kind: "closed", text: "Iraq's central bank bans crypto trading." },
+  { iso: "DZA", from: [2018, 1], kind: "closed", text: "Algeria outlaws buying, selling and holding crypto." },
+  { iso: "QAT", from: [2018, 2], kind: "closed", text: "Qatar's central bank bans crypto trading." },
+  { iso: "EGY", from: [2020, 9], kind: "closed", text: "Egypt bans crypto trading without a central bank licence." },
+  { iso: "AFG", from: [2022, 8], kind: "closed", text: "Afghanistan bans crypto trading." },
 ];
+
+/** The crypto ban in force in a country in a month, if any. */
+export function cryptoBan(iso: string, year: number, month: number): (typeof CRYPTO_BANS)[number] | null {
+  const k = year * 12 + month;
+  return CRYPTO_BANS.find((b) => b.iso === iso && k >= b.from[0] * 12 + b.from[1] && (!b.to || k <= b.to[0] * 12 + b.to[1])) ?? null;
+}
+
+/**
+ * Crypto exchanges that failed with customers' coins inside. `exposure` is the chance a trader's
+ * account was there (in `where` only, when set); some creditors were repaid years later.
+ */
+export const CRYPTO_FAILURES: {
+  at: [number, number];
+  name: string;
+  where?: string[];
+  exposure: number;
+  text: string;
+  repay?: { at: [number, number]; share: number; kind: "coins" | "cash"; text: string };
+}[] = [
+  {
+    at: [2014, 2],
+    name: "Mt. Gox",
+    exposure: 0.6,
+    text: "Mt. Gox halts withdrawals and goes bankrupt with your coins inside.",
+    repay: { at: [2024, 7], share: 0.2, kind: "coins", text: "Ten years on, Mt. Gox's trustee hands back about a fifth of the coins you lost." },
+  },
+  { at: [2019, 1], name: "QuadrigaCX", where: ["CAN"], exposure: 0.35, text: "QuadrigaCX collapses after its founder's death with your coins inside. Most of the money is never found." },
+  { at: [2021, 4], name: "Thodex", where: ["TUR"], exposure: 0.2, text: "Thodex shuts down and its founder flees with your coins." },
+  {
+    at: [2022, 11],
+    name: "FTX",
+    exposure: 0.12,
+    text: "FTX freezes withdrawals and collapses with your coins inside.",
+    repay: { at: [2025, 2], share: 1.19, kind: "cash", text: "FTX's estate repays you in cash: 119% of what your coins were worth in November 2022." },
+  },
+];
+

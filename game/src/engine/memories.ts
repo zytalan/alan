@@ -30,7 +30,8 @@ export function memories(s: LifeState, span = 45): Memory[] {
     }
     if (e.real.infl && e.infl > 0.4) out.push({ year: y, text: `Inflation hits ${Math.round(e.infl * 100)}%.`, kind: "down" });
     if (e.real.fx && p.fx > 0 && e.fx / p.fx > 1.4 && cur !== "USD") out.push({ year: y, text: `The ${cur} loses ${Math.round((1 - p.fx / e.fx) * 100)}% against the dollar.`, kind: "down" });
-    if (e.real.btc && e.btc && p.btc && e.btc / p.btc > 4) out.push({ year: y, text: `Bitcoin goes from $${fmtUsd(p.btc)} to $${fmtUsd(e.btc)}.`, kind: "up" });
+    const told = out.some((m) => m.year === y && m.text.includes("Bitcoin")); // the headlines already tell it
+    if (e.real.btc && e.btc && p.btc && e.btc / p.btc > 4 && !told) out.push({ year: y, text: `Bitcoin goes from $${fmtUsd(p.btc)} to $${fmtUsd(e.btc)}.`, kind: "up" });
     if (e.real.house && (1 + e.house) / (1 + e.infl) - 1 > 0.15) out.push({ year: y, text: `House prices jump ${Math.round(((1 + e.house) / (1 + e.infl) - 1) * 100)}% after inflation.`, kind: "up" });
   }
   return out.sort((a, b) => a.year - b.year);

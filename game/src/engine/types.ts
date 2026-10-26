@@ -186,6 +186,17 @@ export interface DeskPosition {
   cost: number; // total paid, fees included
   since: number; // month index of the first buy
   lastPrice: number;
+  custody?: "exchange" | "wallet"; // coins: on the exchange (the default) or in your own wallet
+}
+
+/** What a failed exchange owes you, paid out years later. */
+export interface DeskClaim {
+  name: string;
+  at: number; // month it's paid
+  kind: "coins" | "cash";
+  coins?: Record<string, number>; // units per coin id, already scaled by the share repaid
+  usd?: number; // cash repaid, in dollars
+  text: string;
 }
 
 export interface DeskOrder {
@@ -214,6 +225,7 @@ export interface DeskState {
   trades: DeskTrade[]; // newest first
   nextId: number;
   yearGain: number; // realized gains and dividends this year, for tax
+  claims?: DeskClaim[];
   stats: {
     deposited: number;
     withdrawn: number;
