@@ -4,12 +4,12 @@ import {
   consumerRate, country, countryName, creditLimit, deskAccess, deskValue, ec, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
   hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, pct, repayDebt, retirementAge,
   salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, stageName, steady, toToday, tradeAsset, usd, W,
-  wageYears, type AssetKey, type Lifestyle, type LifeState, type MarketsData,
+  wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData,
 } from "../engine";
 import { Sparkline } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
 import { Counter } from "./Counter";
-import { DecisionCard } from "./Decision";
+import { DecisionCard, DecisionWaiting } from "./Decision";
 import { Desk } from "./Desk";
 import { FrontPage } from "./FrontPage";
 import { LifeStrip } from "./LifeStrip";
@@ -49,9 +49,13 @@ const LIFESTYLES: { id: Lifestyle; label: string; hint: string }[] = [
 export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: number; refresh: () => void; onDeath: () => void }) {
   const [speed, setSpeed] = useState<Speed>(0);
   const [auto, setAuto] = useState(false);
+  // a decision put aside to use the rest of the screen; the year waits for it
+  const [aside, setAside] = useState<Decision | null>(null);
   const [deskOpen, setDeskOpen] = useState(false);
   const [deskState, setDeskState] = useState<"idle" | "loading" | "error">("idle");
   const pending = s.pending[0];
+  const asking = !!pending && s.alive && !auto;
+  const waiting = asking && pending === aside;
   const access = deskAccess(s);
 
   const openDesk = useCallback(async () => {
@@ -74,10 +78,18 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
   }, [s, refresh]);
 
   const step = useCallback(() => {
-    if (!s.alive || s.pending.length) return;
+    if (!s.alive) return;
+    // the year can't move on past an open question: bring it back instead
+    if (s.pending.length) return setAside(null);
     advance(s);
     refresh();
   }, [s, refresh]);
+
+  /** Set the clock. Asking it to run brings back a decision that was put aside. */
+  const run = useCallback((v: Speed) => {
+    setSpeed(v);
+    if (v > 0) setAside(null);
+  }, []);
 
   // the clock: one year per tick, pausing for decisions
   useEffect(() => {
@@ -104,29 +116,36 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === " ") {
         e.preventDefault();
-        setSpeed((v) => (v === 0 ? 1 : 0));
+        run(speed === 0 ? 1 : 0);
       } else if (e.key === "n" || e.key === "N") step();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, deskOpen]);
+  }, [step, run, speed, deskOpen]);
+
+  const decision = asking && (
+    waiting ? (
+      <DecisionWaiting d={pending} onOpen={() => setAside(null)} />
+    ) : (
+      <DecisionCard
+        d={pending}
+        year={s.year}
+        age={s.age}
+        onChoose={(id) => {
+          choose(s, pending.id, id);
+          refresh();
+        }}
+        onClose={() => setAside(pending)}
+      />
+    )
+  );
 
   const c = country(s.country);
   if (deskOpen && s.desk && s.alive) {
     return (
       <>
         <Desk s={s} version={version} refresh={refresh} onClose={() => setDeskOpen(false)} onFinishYear={step} />
-        {pending && (
-          <DecisionCard
-            d={pending}
-            year={s.year}
-            age={s.age}
-            onChoose={(id) => {
-              choose(s, pending.id, id);
-              refresh();
-            }}
-          />
-        )}
+        {decision}
       </>
     );
   }
@@ -142,11 +161,11 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
           </div>
           <div className="controls">
             <div className="seg" role="group" aria-label="Speed">
-              <button aria-pressed={speed === 0} onClick={() => setSpeed(0)} title="Pause (space)">
+              <button aria-pressed={speed === 0} onClick={() => run(0)} title="Pause (space)">
                 Pause
               </button>
               {([1, 3, 10] as const).map((v) => (
-                <button key={v} aria-pressed={speed === v} onClick={() => setSpeed(v)}>
+                <button key={v} aria-pressed={speed === v} onClick={() => run(v)}>
                   {v}×
                 </button>
               ))}
@@ -154,7 +173,7 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
             <button className="btn small" onClick={openDesk} disabled={!access.ok || deskState === "loading"} title={access.ok ? "Trade month by month" : access.reason}>
               {deskState === "loading" ? "Loading markets…" : "Trading desk"}
             </button>
-            <button className="btn small primary" onClick={step} disabled={!!pending || !s.alive} title="Next year (N)">
+            <button className="btn small primary" onClick={step} disabled={!s.alive} title={pending ? "A decision is waiting" : "Next year (N)"}>
               Next year
             </button>
             <label className="toggle">
@@ -183,17 +202,7 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
           <Panels s={s} refresh={refresh} onDesk={openDesk} />
         </aside>
       </main>
-      {pending && s.alive && !auto && (
-        <DecisionCard
-          d={pending}
-          year={s.year}
-          age={s.age}
-          onChoose={(id) => {
-            choose(s, pending.id, id);
-            refresh();
-          }}
-        />
-      )}
+      {decision}
     </>
   );
 }
