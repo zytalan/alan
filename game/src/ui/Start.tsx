@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { countryIsos, countryName, flagEmoji, country, randomSeed, usd, world, type Era, type Setup } from "../engine";
 import { Rosette } from "./Rosette";
-import type { PastLife } from "./storage";
+import type { PastLife, SavedLife } from "./storage";
 
 const ERAS: { id: Era; label: string }[] = [
   { id: "any", label: "Any time" },
@@ -26,7 +26,7 @@ function hasMarketData(iso: string, year: number): boolean {
   return m.eq.slice(Math.max(0, year - w.m0)).some((v) => v != null);
 }
 
-export function Start({ onStart, lives }: { onStart: (s: Setup) => void; lives: PastLife[] }) {
+export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s: Setup) => void; lives: PastLife[]; unfinished: SavedLife | null; onContinue: () => void }) {
   const [era, setEra] = useState<Era>("any");
   const [year, setYear] = useState(1995);
   const [iso, setIso] = useState("CHN");
@@ -39,8 +39,26 @@ export function Start({ onStart, lives }: { onStart: (s: Setup) => void; lives: 
     : `No stock-market data for ${countryName(iso)} — its market is simulated from its economy.`;
   const codeSeed = Number(code.replace(/\D/g, ""));
 
+  const u = unfinished?.life;
   return (
     <main className="wrap start">
+      {u && (
+        <section className="resume" aria-label="Your unfinished life">
+          <div className="resume-who">
+            <span className="eyebrow">{u.alive ? "Your unfinished life" : "Your last life ended"}</span>
+            <b>
+              <span aria-hidden="true">{flagEmoji(country(u.country).i2)}</span> {u.name}
+            </b>
+            <span className="muted">
+              {countryName(u.country)} · {u.year} · age {u.age}
+              {u.mode === "timetravel" ? " · time travel" : ""}
+            </span>
+          </div>
+          <button className="btn primary" onClick={onContinue}>
+            {u.alive ? "Continue" : "See the statement"}
+          </button>
+        </section>
+      )}
       <section className="hero">
         <Rosette />
         <span className="eyebrow">A life simulator built on real economic history</span>

@@ -57,6 +57,13 @@ export function wageYears(s: LifeState, netWorthNominal: number, year = s.year, 
   return w > 0 ? netWorthNominal / w : 0;
 }
 
+/** File a change in net worth under its cause for this year's breakdown (see YearRecord.moves). */
+export function addMove(s: LifeState, key: string, amount: number): void {
+  if (!amount || !Number.isFinite(amount)) return;
+  const m = (s.yr.moves ??= {});
+  m[key] = (m[key] ?? 0) + amount;
+}
+
 export function log(s: LifeState, text: string, tone: Tone = "neutral"): void {
   s.log.push({ year: s.year, age: s.age, text, tone });
 }
@@ -276,6 +283,9 @@ export function raiseCash(s: LifeState, amount: number): number {
     // bills come out of idle cash in the trading account before anyone lends you money
     const take = Math.min(s.desk.cash, need);
     s.desk.cash -= take;
+    // it leaves the account as a withdrawal would, so the account's results don't count it as a loss
+    s.desk.stats.withdrawn += take;
+    s.desk.stats.flowsReal -= toIntl2021(s.country, s.macroSeed, s.year, take);
     need -= take;
   }
   return amount - Math.max(0, need);

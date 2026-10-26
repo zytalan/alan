@@ -13,7 +13,7 @@ import { DEPOSIT_SHOCKS, EXCHANGE_FAILURES, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
-  adult, buyProperty, buyStock, bump, clamp, consumerRate, creditLimit, dev, ec, endBusiness, fmt, gainsTaxRate, homePrice,
+  addMove, adult, buyProperty, buyStock, bump, clamp, consumerRate, creditLimit, dev, ec, endBusiness, fmt, gainsTaxRate, homePrice,
   incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay, priceToIncome, propertyValue, raiseCash, rebalance,
   realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock, stockValue, totalDebt, usdPremium,
 } from "./ops";
@@ -230,6 +230,26 @@ export function createLife(setup: Setup): LifeState {
 
 let twinHook: ((s: LifeState) => number) | null = null;
 /** policy.ts registers a function that replays this life with default choices. */
+/**
+ * Where a pay of `mult` typical wages ranks among earners: the share paid less in its country, and
+ * worldwide in PPP terms. Pay spreads like income (the country's Gini), with the typical wage in
+ * the middle, so it uses the same data that places a family at birth.
+ */
+export function payRank(iso: string, year: number, mult: number): { country: number; world: number } {
+  const y = Math.min(year, world().y1);
+  const m = Math.max(mult, 1e-6);
+  const home = normCdf(Math.log(m) / incomeSigma(iso, year));
+  const x = m * 0.75 * (nearest(iso, "ppp", y) ?? 5000);
+  let below = 0;
+  let total = 0;
+  for (const c of countryIsos()) {
+    const pop = nearest(c, "pop", y) ?? 0;
+    below += pop * normCdf((Math.log(x) - Math.log(0.75 * (nearest(c, "ppp", y) ?? 5000))) / incomeSigma(c, y));
+    total += pop;
+  }
+  return { country: home, world: total > 0 ? below / total : 0.5 };
+}
+
 export function setTwinHook(fn: (s: LifeState) => number): void {
   twinHook = fn;
 }
@@ -291,8 +311,9 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     if (r.chance(p)) {
       const value = w * r.range(1.5, 3) * (1 + s.familyPct);
       const cost = Math.min(liquid(s) * 0.5, value * 0.3);
-      raiseCash(s, cost);
+      const paid = raiseCash(s, cost);
       s.properties.push({ id: `p${s.year}-fam`, kind: "home", value, price: value, mortgage: 0, rate: 0, payment: 0, bought: s.year });
+      addMove(s, agr > 0.3 ? "ev:A house on family land" : "ev:The family home", value - paid);
       s.flags.familyHome = true;
       s.livingWithParents = false;
       log(s, agr > 0.3 ? "You build a simple house on family land." : "You move into the family home.", "milestone");
@@ -313,6 +334,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
         if (estate > 0.05 * w) {
           if (s.age >= 18) invest(s, estate);
           else s.cashHome += estate;
+          addMove(s, "inherit", estate);
           log(s, `You inherit ${fmt(s, estate)}.`, "money");
         }
         if (s.age < 18) s.parents.incomeMult *= 0.4;
@@ -336,6 +358,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     if (s.year < Number(s.flags.ponziEnd)) {
       const payout = amt * 0.3;
       invest(s, payout);
+      addMove(s, "ev:The 'guaranteed' fund", payout);
       log(s, `Your 'guaranteed' fund pays out ${fmt(s, payout)}. It works!`, "money");
     } else {
       log(s, `The scheme collapses. The ${fmt(s, amt)} you put in is gone.`, "bad");
@@ -363,16 +386,19 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     const fail = EXCHANGE_FAILURES.find((f) => f.year === s.year);
     if (fail && s.cryptoCustody === "exchange" && r.chance(fail.exposure)) {
       log(s, `${fail.name} collapses with your coins inside. ${fmt(s, s.holdings.crypto)} gone.`, "bad");
+      addMove(s, `ev:${fail.name} collapses`, -s.holdings.crypto);
       s.holdings.crypto = 0;
       syncAllocation(s);
     } else if (s.cryptoCustody === "self" && r.chance(0.01)) {
       log(s, `You can't find your wallet's recovery phrase. ${fmt(s, s.holdings.crypto)} in bitcoin is locked away forever.`, "bad");
+      addMove(s, "ev:A lost recovery phrase", -s.holdings.crypto);
       s.holdings.crypto = 0;
       syncAllocation(s);
     }
   }
   if (s.flags.loanBack === s.year) {
     invest(s, Number(s.flags.loanAmt));
+    addMove(s, "ev:Your sibling pays you back", Number(s.flags.loanAmt));
     log(s, `Your sibling pays you back ${fmt(s, Number(s.flags.loanAmt))}.`, "good");
   }
   if (s.age < 16 && e.war >= 20 && r.chance(clamp(e.war / 2500, 0.02, 0.6))) {
@@ -384,6 +410,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   if (s.cashHome > w && r.chance(0.03)) {
     const lost = s.cashHome * 0.5;
     s.cashHome -= lost;
+    addMove(s, "ev:Thieves", -lost);
     log(s, `Thieves find the cash you keep at home. ${fmt(s, lost)} gone.`, "bad");
   }
 }
@@ -422,7 +449,9 @@ export function choose(s: LifeState, decisionId: string, optionId: string): void
   s.pending.splice(i, 1);
   const e = ec(s);
   const c: EventCtx = { e, prev: ec(s, s.year - 1), w: e.wage, r: stream(s.seed, "res", d.event, s.year, optionId) };
+  const before = netWorth(s);
   EVENT_MAP[d.event].resolve(s, c, d.payload, optionId);
+  addMove(s, `ev:${d.title}`, netWorth(s) - before);
 }
 
 // ------------------------------------------------------------------ resolve year
@@ -442,6 +471,7 @@ export function resolveYear(s: LifeState): void {
 
   let income = 0;
   let spending = 0;
+  let kept = 0; // what income added to net worth: after tax, living costs and interest
   let deprivation = 0;
   let cons = 1;
 
@@ -452,7 +482,7 @@ export function resolveYear(s: LifeState): void {
     cons = famIncome / needs;
     deprivation = clamp(1 - cons, 0, 1);
   } else {
-    applyDepositShock(s);
+    addMove(s, "bank", -applyDepositShock(s));
     // ---- income
     const cut = Number(s.flags.incomeCut ?? 0);
     let labor = s.job ? s.job.mult * w * (1 - cut) : 0;
@@ -461,9 +491,13 @@ export function resolveYear(s: LifeState): void {
     const pension = s.retired ? s.pension * w : 0;
     const benefit = !s.job && !s.retired && !s.school && s.unemployedYears === 0 && dev(s) >= 0.65 && s.flags.lastMult ? 0.4 * Number(s.flags.lastMult) * w : 0;
     const rent = rentIncome(s);
+    const hadBiz = s.business != null;
+    const nwBiz = hadBiz ? netWorth(s) : 0;
     const biz = s.business ? businessYear(s, e, prev, r) : 0;
+    if (hadBiz) addMove(s, "business", netWorth(s) - nwBiz);
     let support = 0;
     let tuitionOwn = 0;
+    let tuitionBorrowed = 0;
     if (s.school && s.school.kind !== "primary" && s.school.kind !== "secondary") {
       const tuition = tuitionPerYear(s, s.school.kind, Boolean(s.flags.abroad));
       const parentsAlive = s.parents.alive[0] || s.parents.alive[1];
@@ -472,6 +506,7 @@ export function resolveYear(s: LifeState): void {
       tuitionOwn = (1 - famShare) * tuition;
       if (tuitionOwn > 0 && s.access.bank && dev(s) >= 0.55) {
         s.studentDebt += tuitionOwn;
+        tuitionBorrowed = tuitionOwn;
         tuitionOwn = 0;
       }
       if (!s.job) labor += 0.2 * w * (1 - famShare); // part-time work
@@ -490,21 +525,27 @@ export function resolveYear(s: LifeState): void {
     const insurance = s.flags.insured ? 0.03 * w : 0;
     const supportParents = Number(s.flags.supportUntil ?? 0) >= s.year ? 0.08 * Math.max(0, disposable) : 0;
     let debtService = 0;
+    let interestPaid = 0;
     for (const p of s.properties) {
       if (p.mortgage <= 0) continue;
       const interest = p.mortgage * p.rate;
       const principal = Math.min(p.mortgage, Math.max(0, p.payment - interest));
       p.mortgage -= principal;
       debtService += interest + principal;
+      interestPaid += interest;
     }
     if (s.consumerDebt > 0) {
       const principal = s.consumerDebt * 0.15;
-      debtService += s.consumerDebt * consumerRate(s) + principal;
+      const interest = s.consumerDebt * consumerRate(s);
+      debtService += interest + principal;
+      interestPaid += interest;
       s.consumerDebt -= principal;
     }
     if (s.studentDebt > 0 && !s.school) {
       const principal = s.studentDebt * 0.08;
-      debtService += s.studentDebt * (e.dep + 0.02) + principal;
+      const interest = s.studentDebt * (e.dep + 0.02);
+      debtService += interest + principal;
+      interestPaid += interest;
       s.studentDebt -= principal;
     }
     // Fixed obligations come first; living costs adapt to what's left. Poor households
@@ -529,6 +570,7 @@ export function resolveYear(s: LifeState): void {
     }
     let essentialsPaid = Math.min(decent, available);
     let net = available - essentialsPaid;
+    let help = 0;
     if (essentialsPaid < decent) {
       const gap = decent - essentialsPaid;
       let covered = raiseCash(s, Math.min(gap, liquid(s)));
@@ -538,7 +580,9 @@ export function resolveYear(s: LifeState): void {
         covered += b;
       }
       essentialsPaid += covered;
-      essentialsPaid = Math.max(essentialsPaid, Math.min(decent, subsistence)); // family and the informal economy keep you fed
+      const fed = Math.max(essentialsPaid, Math.min(decent, subsistence)); // family and the informal economy keep you fed
+      help = fed - essentialsPaid;
+      essentialsPaid = fed;
       deprivation = clamp(1 - essentialsPaid / decent, 0, 1);
       net = 0;
     }
@@ -554,9 +598,14 @@ export function resolveYear(s: LifeState): void {
       extra = floor - wants;
       const fromNet = Math.min(Math.max(0, net), extra);
       net -= fromNet;
-      if (extra - fromNet > 0) pay(s, extra - fromNet);
+      // whatever the card won't cover simply goes unpaid
+      if (extra - fromNet > 0) help += pay(s, extra - fromNet);
     }
     spending = committed + essentialsPaid + wants + extra;
+    // repaying principal moves money into lower debt, so it isn't a loss; interest is
+    kept = income - tax - (spending - debtService) - interestPaid - tuitionBorrowed + help;
+    addMove(s, "pay", kept + interestPaid);
+    addMove(s, "interest", -interestPaid);
     cons = (essentialsPaid + wants + extra) / (0.42 * w * hh);
     applyReturns(s, e, prev, r);
     invest(s, Math.max(0, net));
@@ -567,6 +616,7 @@ export function resolveYear(s: LifeState): void {
 
   // informal lenders stop lending long before banks would; what's beyond that is lost to them
   if (!s.access.bank && s.consumerDebt > 1.5 * w) {
+    addMove(s, "writeoff", s.consumerDebt - 1.5 * w);
     s.consumerDebt = 1.5 * w;
     if (!s.flags.writtenOff) log(s, "The moneylenders give up on the rest of what you owe. They won't lend to you again soon.", "bad");
     s.flags.writtenOff = true;
@@ -598,12 +648,13 @@ export function resolveYear(s: LifeState): void {
       die(s, causeOfDeath(s.age, dev(s), dr, e.war > 50));
     }
   }
-  record(s, income, spending);
+  record(s, income, spending, kept);
 }
 
-function applyDepositShock(s: LifeState): void {
+/** A bank freeze or haircut on deposits, if this year brings one. Returns what was lost outright. */
+function applyDepositShock(s: LifeState): number {
   const shock = DEPOSIT_SHOCKS.find((d) => d.iso === s.country && d.year === s.year);
-  if (!shock || s.flags.withdrew === s.year || s.holdings.cash <= 0) return;
+  if (!shock || s.flags.withdrew === s.year || s.holdings.cash <= 0) return 0;
   const cash = s.holdings.cash;
   const lost = cash * shock.haircut;
   const rest = cash - lost;
@@ -612,6 +663,7 @@ function applyDepositShock(s: LifeState): void {
     s.holdings.cash = 0;
   } else s.holdings.cash = rest;
   log(s, `${shock.text} You lose ${fmt(s, lost)}${shock.frozenYears ? ` and ${fmt(s, rest)} is frozen until ${s.year + shock.frozenYears}` : ""}.`, "bad");
+  return lost;
 }
 
 function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
@@ -619,14 +671,22 @@ function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
   const usDep = econ("USA", s.macroSeed, s.year, s.marketVariant).dep;
   const h = s.holdings;
   const before = h.bonds + h.localEq + h.globalEq + stockValue(s, true);
-  h.cash *= 1 + (s.access.bank ? e.dep : 0);
-  h.usd *= (1 + usDep) * fxR;
-  h.bonds *= 1 + e.bond;
-  h.localEq *= 1 + e.eq;
-  h.globalEq *= (1 + e.usEq) * fxR * (1 - s.access.globalFriction);
-  h.gold *= (1 + e.gold) * fxR;
   const btcR = e.btc && prev.btc ? e.btc / prev.btc : 1;
-  h.crypto *= btcR * fxR;
+  const growth: Record<AssetKey, number> = {
+    cash: 1 + (s.access.bank ? e.dep : 0),
+    usd: (1 + usDep) * fxR,
+    bonds: 1 + e.bond,
+    localEq: 1 + e.eq,
+    globalEq: (1 + e.usEq) * fxR * (1 - s.access.globalFriction),
+    gold: (1 + e.gold) * fxR,
+    crypto: btcR * fxR,
+  };
+  for (const k of ASSET_KEYS) {
+    addMove(s, k, h[k] * (growth[k] - 1));
+    h[k] *= growth[k];
+  }
+  const picksBefore = stockValue(s);
+  const homesBefore = s.properties.reduce((a, p) => a + p.value, 0);
   for (const st of s.stocks) {
     if (!st.alive) continue;
     if (r.chance(st.hazard)) {
@@ -640,11 +700,16 @@ function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
     st.value *= Math.max(0.03, 1 + ret);
   }
   s.stocks = s.stocks.filter((st) => st.alive);
+  addMove(s, "picks", stockValue(s) - picksBefore);
   for (const p of s.properties) p.value *= 1 + e.house;
-  if (s.frozen) s.frozen.amount *= 1 + e.dep * 0.3;
+  addMove(s, "home", s.properties.reduce((a, p) => a + p.value, 0) - homesBefore);
+  if (s.frozen) {
+    addMove(s, "cash", s.frozen.amount * e.dep * 0.3);
+    s.frozen.amount *= 1 + e.dep * 0.3;
+  }
   const after = h.bonds + h.localEq + h.globalEq + stockValue(s, true);
   const gainTax = Math.max(0, after - before) * gainsTaxRate(s) * 0.5;
-  if (gainTax > 0) raiseCash(s, gainTax);
+  if (gainTax > 0) addMove(s, "gainsTax", -raiseCash(s, gainTax));
   s.flags.prevEqReal = Number(s.flags.lastEqReal ?? 0);
   s.flags.lastEqReal = (1 + e.eq) / (1 + e.infl) - 1;
   s.flags.lastCrypto = btcR - 1;
@@ -736,10 +801,19 @@ function die(s: LifeState, cause: string): void {
   else log(s, `Your estate of ${fmt(s, estate)} goes to your relatives.`, "neutral");
 }
 
-function record(s: LifeState, income: number, spending: number): void {
+function record(s: LifeState, income: number, spending: number, kept: number): void {
   const nw = netWorth(s);
   const real = toIntl2021(s.country, s.macroSeed, s.year, nw);
-  const prevLiquid = s.history.length ? s.history[s.history.length - 1].liquid : 0;
+  const prevRec = s.history[s.history.length - 1];
+  const prevLiquid = prevRec ? prevRec.liquid : 0;
+  // what moved net worth this year; whatever wasn't filed under a cause is "other", so the parts add up
+  let moves: Record<string, number> | undefined;
+  if (prevRec && prevRec.country === s.country) {
+    moves = { ...s.yr.moves };
+    const filed = Object.values(moves).reduce((a, x) => a + x, 0);
+    const other = nw - prevRec.netWorth - filed;
+    if (Math.abs(other) > 1e-9 * Math.max(1, Math.abs(nw))) moves.other = (moves.other ?? 0) + other;
+  }
   s.history.push({
     year: s.year,
     age: s.age,
@@ -747,7 +821,7 @@ function record(s: LifeState, income: number, spending: number): void {
     realNW: real,
     income,
     spending,
-    saved: income - spending,
+    saved: kept,
     invested: Number(s.flags.lastNet ?? 0),
     liquid: liquid(s),
     property: propertyValue(s),
@@ -756,6 +830,7 @@ function record(s: LifeState, income: number, spending: number): void {
     health: s.stats.health,
     happiness: s.stats.happiness,
     country: s.country,
+    moves,
   });
   void prevLiquid;
   s.peakReal = Math.max(s.peakReal, real);

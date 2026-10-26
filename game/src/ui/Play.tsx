@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   advance, ASSET_KEYS, ASSET_LABEL, availableAssets, BIZ, buyHome, careerAction, careerOptions, choose, closeBusiness,
-  consumerRate, country, countryName, creditLimit, deskAccess, deskValue, ec, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
-  hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, pct, repayDebt, retirementAge,
-  salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, stageName, steady, toToday, tradeAsset, usd, W,
-  wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData,
+  consumerRate, country, countryIn, countryName, creditLimit, deskAccess, deskValue, ec, econ, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
+  fmtIn, hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
+  retirementAge, salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, signedPct, stageName, steady, toToday,
+  tradeAsset, usd, W,
+  wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
 } from "../engine";
 import { Sparkline } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
@@ -293,15 +294,17 @@ function Summary({ s }: { s: LifeState }) {
           <span className="eyebrow">Income</span>
           <span className="num">{last ? fmt(s, last.income) : "—"}</span>
         </div>
-        <div>
-          <span className="eyebrow">Spending</span>
-          <span className="num">{last ? fmt(s, last.spending) : "—"}</span>
+        <div title="Tax, living costs and interest">
+          <span className="eyebrow">Tax &amp; costs</span>
+          <span className="num">{last ? fmt(s, last.income - last.saved) : "—"}</span>
         </div>
         <div>
           <span className="eyebrow">Kept</span>
-          <span className="num">{last ? fmt(s, last.income - last.spending) : "—"}</span>
+          <span className="num">{last ? fmt(s, last.saved) : "—"}</span>
         </div>
       </div>
+      <PayRank s={s} />
+      {last && <YearMoves s={s} rec={last} prev={s.history[s.history.length - 2]} />}
       <div className="meters">
         {meters.map((m) => (
           <div key={m.k} className={`meter ${(m.k === "health" || m.k === "happiness") && s.stats[m.k] < 30 ? "low" : ""}`}>
@@ -316,6 +319,98 @@ function Summary({ s }: { s: LifeState }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** "Top 18%" for the upper half, "bottom 30%" for the lower. */
+function rankText(share: number): string {
+  return share >= 0.5 ? `top ${Math.max(1, Math.round((1 - share) * 100))}%` : `bottom ${Math.max(1, Math.round(share * 100))}%`;
+}
+
+/** Where your pay ranks among earners at home and in the world. */
+function PayRank({ s }: { s: LifeState }) {
+  const mult = s.job && !s.retired ? s.job.mult : 0;
+  const r = useMemo(() => (mult > 0 ? payRank(s.country, s.year, mult) : null), [s.country, s.year, mult]);
+  if (!r) return null;
+  return (
+    <p className="rank">
+      Your pay: <b>{rankText(r.country)}</b> in {countryIn(s.country)} · <b>{rankText(r.world)}</b> worldwide
+    </p>
+  );
+}
+
+const MOVE_LABEL: Record<string, string> = {
+  interest: "Interest on debts",
+  cash: "Interest on savings",
+  usd: "US dollars",
+  bonds: "Bonds",
+  localEq: "Local stock index",
+  globalEq: "Global stock index",
+  gold: "Gold",
+  crypto: "Bitcoin",
+  picks: "Shares you picked",
+  desk: "Trading account",
+  home: "Home and property value",
+  business: "Your business",
+  bank: "Lost in a banking crisis",
+  writeoff: "Debts written off",
+  inherit: "Inheritance",
+  gainsTax: "Tax on investment gains",
+  other: "Other",
+};
+
+function moveLabel(key: string, amount: number): string {
+  if (key === "pay") return amount >= 0 ? "Saved from income" : "Spent more than you earned";
+  if (key.startsWith("ev:")) return key.slice(3).replace(/\?$/, ""); // decision titles, without their question mark
+  return MOVE_LABEL[key] ?? key;
+}
+
+/** What moved net worth last year, biggest causes first, then what prices took. */
+function YearMoves({ s, rec, prev }: { s: LifeState; rec: YearRecord; prev?: YearRecord }) {
+  if (!rec.moves || !prev) return null;
+  const e = econ(rec.country, s.macroSeed, rec.year, s.marketVariant);
+  const small = 0.002 * e.wage;
+  const money = (v: number) => `${v >= 0 ? "+" : "−"}${fmtIn(s, Math.abs(v), rec.year, rec.country)}`;
+  const parts = Object.entries(rec.moves).filter(([k]) => k !== "other").sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const shown = parts.slice(0, 5).filter(([, v]) => Math.abs(v) >= small);
+  const rest = Object.values(rec.moves).reduce((a, v) => a + v, 0) - shown.reduce((a, [, v]) => a + v, 0);
+  const change = rec.netWorth - prev.netWorth;
+  if (!shown.length && Math.abs(change) < small) return null;
+  const prices = -prev.netWorth * e.infl;
+  const tone = (v: number) => (v > 0 ? "up" : v < 0 ? "down" : "");
+  return (
+    <div className="moves">
+      <div className="moves-head">
+        <span className="eyebrow">What moved it in {rec.year}</span>
+        <b className={`num ${tone(change)}`}>{money(change)}</b>
+      </div>
+      <ul>
+        {shown.map(([k, v]) => (
+          <li key={k}>
+            <span>{moveLabel(k, v)}</span>
+            <b className={`num ${tone(v)}`}>{money(v)}</b>
+          </li>
+        ))}
+        {Math.abs(rest) >= small && (
+          <li>
+            <span>Other</span>
+            <b className={`num ${tone(rest)}`}>{money(rest)}</b>
+          </li>
+        )}
+        {Math.abs(prices) >= small && (
+          <li className="prices">
+            <span>
+              {e.infl >= 0 ? "Rising" : "Falling"} prices ({signedPct(e.infl, 1)})
+            </span>
+            <b className={`num ${tone(prices)}`}>{money(prices)}</b>
+          </li>
+        )}
+        <li className="total">
+          <span>After inflation</span>
+          <b className={`num ${tone(change + prices)}`}>{money(change + prices)}</b>
+        </li>
+      </ul>
+    </div>
   );
 }
 

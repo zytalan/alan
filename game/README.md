@@ -53,6 +53,17 @@ jump to it in the ledger. Each New Year's Eve a front page sums up the year just
 its biggest story, what the stock market did month by month, and your own news. The
 statement ends with your best coin and the whole strip.
 
+Under your net worth, a short list shows what moved it last year, biggest causes first:
+what you kept from income, interest, each investment's return, your home's value, and
+decisions by name (a wedding, a hospital bill), then what rising prices took. The parts
+add up to the change exactly; anything not filed under a cause shows as "Other". Next to
+your income, your pay is ranked in your country and the world, from the same income
+distributions that place your family at birth.
+
+The life saves itself in your browser as you play. Reload or come back later and
+Continue picks up the same year; only one unfinished life is kept, so starting another
+asks first.
+
 Names follow the traditions of the 40 countries where most babies are born, including
 the main communities inside a country (Hausa, Yoruba and Igbo in Nigeria; Hindu and
 Muslim names in India), feminine forms of Russian and Polish family names, and

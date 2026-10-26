@@ -139,6 +139,13 @@ export interface YearRecord {
   health: number;
   happiness: number;
   country: string;
+  /**
+   * What changed net worth since the year before, by cause, in nominal local money: "pay" (income
+   * left after tax and living costs), "interest", one key per asset's return, "home", "business",
+   * "desk", "costs", "ev:<decision title>" and "other" for the rest, so the parts add up exactly.
+   * Missing in a year you moved country, when the two amounts are in different currencies.
+   */
+  moves?: Record<string, number>;
 }
 
 export interface DecisionOption {
@@ -297,5 +304,6 @@ export interface LifeState {
     spending: number;
     oneOff: number; // one-off costs scheduled this year
     windfall: number;
+    moves?: Record<string, number>; // what moved net worth so far this year (see YearRecord.moves)
   };
 }

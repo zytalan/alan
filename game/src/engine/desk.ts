@@ -10,7 +10,7 @@ import {
   yearStartT, type Instrument,
 } from "./markets";
 import { toIntl2021 } from "./macro";
-import { ec, fmt, gainsTaxRate, invest, liquid, log, pay, raiseCash } from "./ops";
+import { addMove, ec, fmt, gainsTaxRate, invest, liquid, log, pay, raiseCash } from "./ops";
 import type { DeskOrder, DeskState, LifeState } from "./types";
 import { country } from "./world";
 
@@ -363,7 +363,10 @@ export function finishDeskYear(s: LifeState): void {
   if (tax > 0) {
     const fromDesk = Math.min(tax, d.cash);
     d.cash -= fromDesk;
-    if (tax > fromDesk) pay(s, tax - fromDesk);
+    if (tax > fromDesk) {
+      pay(s, tax - fromDesk);
+      addMove(s, "desk", -(tax - fromDesk));
+    }
     d.stats.taxes += tax;
     d.stats.costsReal += real(s, tax);
     record(s, d.t, `Tax on this year's gains: ${fmt(s, tax)}`);
@@ -371,6 +374,7 @@ export function finishDeskYear(s: LifeState): void {
   d.yearGain = 0;
   const flows = d.stats.deposited - d.stats.withdrawn - Number(s.flags.deskFlowsStart ?? flowsBefore);
   const change = deskValue(s) - startValue - flows;
+  addMove(s, "desk", change);
   if (Object.keys(d.pos).length || Math.abs(change) > 0.5 || d.cash > 0.5) {
     const v = deskValue(s);
     log(s, `Trading account: ${change >= 0 ? "up" : "down"} ${fmt(s, Math.abs(change))} this year, worth ${fmt(s, v)}.`, "money");

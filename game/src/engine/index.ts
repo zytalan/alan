@@ -2,7 +2,7 @@ export * from "./types";
 export { setWorld, hasWorld, country, countryIn, countryIsos, countryName, flagEmoji, nearest, world, type WorldData } from "./world";
 export { econ, toIntl2021, intlToUsd } from "./macro";
 export {
-  advance, birthShare, birthShares, buyHome, buyListedStock, careerAction, careerOptions, choose, closeBusiness, listBusiness,
+  advance, birthShare, birthShares, payRank, buyHome, buyListedStock, careerAction, careerOptions, choose, closeBusiness, listBusiness,
   repayDebt, sellHolding, sellHome, setAllocation, setLifestyle, stockMarket, tradeAsset, ASSET_LABEL, type CareerAction,
 } from "./life";
 export { newGame, steady, typical, runLife } from "./policy";
