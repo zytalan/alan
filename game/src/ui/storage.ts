@@ -14,6 +14,7 @@ export interface PastLife {
   grade: string;
   mode: "random" | "timetravel";
   seed: number;
+  code?: string; // lives since October 2026; older ones replay from the bare seed
 }
 
 const KEY = "lot-in-life:lives";

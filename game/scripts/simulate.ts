@@ -18,7 +18,7 @@ const t0 = performance.now();
 for (let i = 0; i < n; i++) {
   const seed = randomSeed();
   try {
-    const s = newGame({ mode: "random", seed });
+    const s = newGame({ mode: "random", seed, yearDraw: "births" });
     s.lifestyle = randomLifestyle(seed);
     runLife(s, chooser);
     const bad = s.history.find((h) => !Number.isFinite(h.netWorth) || !Number.isFinite(h.realNW));

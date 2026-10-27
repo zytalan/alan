@@ -5,7 +5,7 @@
 import { BIZ, STOCK_IDEAS, TECH_STAGES } from "./content/business";
 import { OCC, OCCUPATIONS, type Occupation } from "./content/occupations";
 import { money, usd } from "./format";
-import { capitalControl, cryptoBan } from "./history";
+import { capitalControl, cryptoBan, goldRule } from "./history";
 import { econ, intlToUsd, toIntl2021, type YearEcon } from "./macro";
 import { deskValue } from "./markets";
 import { stream, type Rng } from "./rng";
@@ -178,9 +178,22 @@ export function refreshAccess(s: LifeState, r: Rng): void {
   a.mortgage = a.bank && mortgageMarket && y >= s.creditLockUntil;
 }
 
+/** A year of care for a frail parent: a care home where they're common, a carer at home elsewhere. */
+export function careCost(s: LifeState): number {
+  const d = dev(s);
+  return W(s) * (d >= 0.75 ? 1.2 : d >= 0.45 ? 0.7 : 0.35);
+}
+
+/** Share of care the state pays once a parent's own savings are spent: most of it in rich countries, none in poor ones. */
+export function careAid(s: LifeState): number {
+  const d = dev(s);
+  return d >= 0.75 ? 0.8 : d >= 0.45 ? 0.3 : 0;
+}
+
 export function availableAssets(s: LifeState): AssetKey[] {
   const a = s.access;
-  const out: AssetKey[] = ["cash", "usd", "gold"];
+  const out: AssetKey[] = ["cash", "usd"];
+  if (goldRule(s.country, s.year, 7)?.kind !== "closed") out.push("gold"); // jewellery or coins still count
   if (a.bank) out.push("bonds");
   if (a.localEq) out.push("localEq");
   if (a.globalEq) out.push("globalEq");

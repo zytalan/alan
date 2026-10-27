@@ -10,7 +10,7 @@ export function metalFor(wageYears: number): Metal {
 export const METAL_LABEL: Record<Metal, string> = { copper: "Copper", silver: "Silver", gold: "Gold", platinum: "Platinum" };
 
 // A coin is an object, so its colours are its own in both themes.
-const METALS: Record<Metal, { hi: string; base: string; lo: string; edge: string; ink: string }> = {
+export const METALS: Record<Metal, { hi: string; base: string; lo: string; edge: string; ink: string }> = {
   copper: { hi: "#f3bd98", base: "#c47a4a", lo: "#7a4322", edge: "#5f341a", ink: "#43200e" },
   silver: { hi: "#f7f9fa", base: "#c5cbd1", lo: "#7d858e", edge: "#666e77", ink: "#323a43" },
   gold: { hi: "#fcebab", base: "#d8ab40", lo: "#8a681b", edge: "#715515", ink: "#4a370a" },

@@ -1,21 +1,25 @@
 import { useMemo, useState } from "react";
-import { countryIsos, countryName, flagEmoji, country, randomSeed, usd, world, type Era, type Setup } from "../engine";
+import { countryIsos, countryName, flagEmoji, country, parseLifeCode, randomSeed, usd, world, type Setup } from "../engine";
 import { Rosette } from "./Rosette";
 import type { PastLife, SavedLife } from "./storage";
 
-const ERAS: { id: Era; label: string }[] = [
-  { id: "any", label: "Any time" },
-  { id: "past", label: "1950–75" },
-  { id: "recent", label: "1976–2000" },
-  { id: "now", label: "Born today" },
+type When = "any" | "pick" | "today";
+
+const WHEN: { id: When; label: string }[] = [
+  { id: "any", label: "Any year" },
+  { id: "pick", label: "Pick a year" },
+  { id: "today", label: "Born today" },
 ];
 
-const ERA_HINT: Record<Era, string> = {
-  any: "Drawn from 1950 to today.",
-  past: "You'll live through the oil shocks, the Asian crisis and 2008.",
-  recent: "Dot-com, the rise of China, Bitcoin.",
-  now: "Born in 2026. Everything after this year is simulated.",
-};
+const BIRTH_YEARS = Array.from({ length: 2026 - 1950 + 1 }, (_, i) => 2026 - i);
+
+function whenHint(when: When, year: number): string {
+  if (when === "any") return "Drawn from 1950 to 2026, weighted by how many babies were born each year.";
+  if (when === "today" || year >= 2026) return "Born in 2026. Everything after this year is simulated.";
+  if (year <= 1975) return "You'll live through the oil shocks, the Asian crisis and 2008.";
+  if (year <= 2000) return "Dot-com, the rise of China, Bitcoin.";
+  return `Real history until 2025, when you're ${2025 - year}. After that it's simulated.`;
+}
 
 const FEATURED = ["USA", "CHN", "IND", "JPN", "GBR", "DEU", "KOR", "BRA", "NGA", "ARG", "TUR", "RUS", "IDN", "MEX", "ZAF"];
 
@@ -27,7 +31,8 @@ function hasMarketData(iso: string, year: number): boolean {
 }
 
 export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s: Setup) => void; lives: PastLife[]; unfinished: SavedLife | null; onContinue: () => void }) {
-  const [era, setEra] = useState<Era>("any");
+  const [when, setWhen] = useState<When>("any");
+  const [born, setBorn] = useState(1990);
   const [year, setYear] = useState(1995);
   const [iso, setIso] = useState("CHN");
   const [bg, setBg] = useState<"poor" | "middle" | "rich">("middle");
@@ -37,7 +42,11 @@ export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s:
   const marketNote = hasMarketData(iso, year)
     ? `Real stock-market history for ${countryName(iso)}.`
     : `No stock-market data for ${countryName(iso)} — its market is simulated from its economy.`;
-  const codeSeed = Number(code.replace(/\D/g, ""));
+  const replay = parseLifeCode(code);
+  const beBorn = (): Setup =>
+    when === "pick"
+      ? { mode: "random", seed: randomSeed(), birthYear: born, yearDraw: "births" }
+      : { mode: "random", seed: randomSeed(), era: when === "today" ? "now" : "any", yearDraw: "births" };
 
   const u = unfinished?.life;
   return (
@@ -80,16 +89,25 @@ export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s:
           <div className="field">
             <label id="era-label">When</label>
             <div className="seg" role="group" aria-labelledby="era-label">
-              {ERAS.map((e) => (
-                <button key={e.id} aria-pressed={era === e.id} onClick={() => setEra(e.id)}>
+              {WHEN.map((e) => (
+                <button key={e.id} aria-pressed={when === e.id} onClick={() => setWhen(e.id)}>
                   {e.label}
                 </button>
               ))}
             </div>
-            <span className="note">{ERA_HINT[era]}</span>
+            {when === "pick" && (
+              <select id="born-year" aria-label="Year you're born" value={born} onChange={(e) => setBorn(Number(e.target.value))}>
+                {BIRTH_YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="note">{whenHint(when, born)}</span>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={() => onStart({ mode: "random", seed: randomSeed(), era })}>
+            <button className="btn primary" onClick={() => onStart(beBorn())}>
               Be born
             </button>
           </div>
@@ -155,9 +173,9 @@ export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s:
       <section className="row" aria-label="Replay a life">
         <div className="field" style={{ flex: "0 1 260px" }}>
           <label htmlFor="code">Replay a life by its code</label>
-          <input id="code" type="text" inputMode="numeric" placeholder="e.g. 1408823311" value={code} onChange={(e) => setCode(e.target.value)} />
+          <input id="code" type="text" placeholder="e.g. 1985-1408823311" value={code} onChange={(e) => setCode(e.target.value)} />
         </div>
-        <button className="btn" style={{ alignSelf: "end" }} disabled={!codeSeed} onClick={() => onStart({ mode: "random", seed: codeSeed, era: "any" })}>
+        <button className="btn" style={{ alignSelf: "end" }} disabled={!replay} onClick={() => replay && onStart(replay)}>
           Replay
         </button>
       </section>
@@ -173,7 +191,7 @@ export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s:
                 {l.mode === "timetravel" ? " · time travel" : ""}
               </span>
               <span className="num">{usd(l.peakUsd)}</span>
-              <span className="num muted">#{l.seed}</span>
+              <span className="num muted">{l.code ?? `#${l.seed}`}</span>
             </div>
           ))}
         </section>
@@ -182,8 +200,9 @@ export function Start({ onStart, lives, unfinished, onContinue }: { onStart: (s:
       <p className="sources">
         Data: World Bank World Development Indicators (births, life expectancy, incomes, prices, rates, schooling), OECD share
         prices and interest rates, the Jordà–Schularick–Taylor Macrohistory Database (stocks, bonds and housing since 1870 for 18
-        countries), Aswath Damodaran's US returns (NYU Stern), and Bitcoin prices from blockchain.com. Money is shown in local
-        currency, with today's US dollars (PPP) alongside. Companies you can buy are fictional; their returns follow real patterns.
+        countries), Aswath Damodaran's US returns (NYU Stern), the World Bank's gold and silver prices, and coin prices from
+        blockchain.com and Kraken. Money is shown in local currency, with today's US dollars (PPP) alongside. Companies you can
+        buy are fictional; their returns follow real patterns.
       </p>
     </main>
   );

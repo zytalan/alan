@@ -4,12 +4,13 @@
 // you own: no borrowing, no short selling. At year end the remaining months play
 // out on their own, gains are taxed, and the account's value counts in net worth.
 // Coins trade here too: they sit on the exchange, which can fail, or in your own
-// wallet, whose keys can be lost, and some countries ban them.
+// wallet, whose keys can be lost, and some countries ban them. So do gold and
+// silver, bought from a dealer and later through funds, where owning gold is legal.
 
-import { CRYPTO_FAILURES, cryptoBan, MONTH_NEWS } from "./history";
+import { CRYPTO_FAILURES, cryptoBan, goldRule, MONTH_NEWS } from "./history";
 import {
-  coinDef, companyById, COINS, deskValue, fxAt, indexLevel, indexName, instruments, monthLabel, monthlyDividendRate, monthOfT,
-  priceOf, tOf, yearOfT, yearStartT, type Instrument,
+  coinDef, companyById, COINS, deskValue, fxAt, indexLevel, indexName, instruments, metalDef, METALS, monthLabel, monthlyDividendRate,
+  monthOfT, priceOf, tOf, yearOfT, yearStartT, type Instrument,
 } from "./markets";
 import { toIntl2021 } from "./macro";
 import { addMove, caughtInFailure, ec, fmt, gainsTaxRate, invest, liquid, log, pay, raiseCash } from "./ops";
@@ -29,22 +30,38 @@ export function cryptoFee(year: number): number {
   return year < 2014 ? 0.006 : year < 2018 ? 0.0025 : year < 2022 ? 0.0015 : 0.001;
 }
 
-/** Commission, or the exchange's fee for coins, as a share of the trade. */
+/** Commission, or the exchange's fee for coins, as a share of the trade. A bullion dealer's cut is all in the spread. */
 export function feeRate(id: string, year: number): number {
+  if (id.startsWith("mt:")) return year >= (metalDef(id.slice(3))?.etf ?? 2005) ? commissionRate(year) : 0;
   return id.startsWith("cc:") ? cryptoFee(year) : commissionRate(year);
 }
 
 /** Bid-ask spread paid on each trade (half on the way in, half on the way out). Early coin markets were thin. */
 export function spreadOf(id: string, year = 2026): number {
   if (id.startsWith("cc:")) return (coinDef(id.slice(3))?.spread ?? 0.01) * (year < 2014 ? 4 : year < 2017 ? 2 : 1);
+  if (id.startsWith("mt:")) {
+    const m = metalDef(id.slice(3));
+    return m ? m.spread[year >= m.etf ? 1 : 0] : 0.02;
+  }
   return id.startsWith("idx:") ? 0.002 : id === "spx" ? 0.004 : 0.008;
 }
 
-/** Where banks won't serve exchanges, or coins are banned, they change hands person to person: about 2% worse each way. */
-function p2pSpread(s: LifeState, id: string): number {
-  if (!id.startsWith("cc:")) return 0;
+/**
+ * Extra spread where the rules push trading sideways: coins traded person to person where banks
+ * won't serve exchanges, or they're banned (about 2% worse each way), and gold bought as coins
+ * where bars are off limits (a 3% premium each way).
+ */
+function sideSpread(s: LifeState, id: string): number {
   const t = s.desk?.t ?? yearStartT(s.year);
-  return cryptoBan(s.country, yearOfT(t), monthOfT(t)) ? 0.04 : 0;
+  if (id.startsWith("cc:")) return cryptoBan(s.country, yearOfT(t), monthOfT(t)) ? 0.04 : 0;
+  if (id === "mt:XAU") return goldRule(s.country, yearOfT(t), monthOfT(t)) ? 0.06 : 0;
+  return 0;
+}
+
+/** Yearly cost of holding a metal: storage and insurance at a dealer, later a fund's fee. */
+export function metalFee(id: string, year: number): number {
+  const m = metalDef(id.slice(3));
+  return m ? m.fee[year >= m.etf ? 1 : 0] : 0;
 }
 
 /** What it costs to move coins between the exchange and your own wallet: a network fee. */
@@ -62,6 +79,8 @@ export interface DeskAccess {
   global: boolean;
   crypto: boolean; // coins can be bought
   cryptoNote?: string; // a ban, or trading person to person
+  metals: string[]; // gold and silver that can be bought
+  metalNote?: string; // a rule on owning gold
 }
 
 export function deskAccess(s: LifeState): DeskAccess {
@@ -76,11 +95,15 @@ export function deskAccess(s: LifeState): DeskAccess {
     : ban.kind === "closed"
       ? "Crypto trading is banned here. You can still sell coins you hold, person to person, about 2% worse"
       : "Banks here won't serve crypto exchanges, so coins change hands person to person, about 2% worse each way";
-  const base = { local, global, crypto, cryptoNote };
+  const rule = goldRule(s.country, yearOfT(t), monthOfT(t));
+  const quoted = METALS.filter((m) => priceOf(`mt:${m.sym}`, s.macroSeed, t, s.country) != null).map((m) => m.sym);
+  // gold only where owning it is allowed, if only as coins; silver everywhere
+  const metals = s.access.bank && s.age >= 18 ? quoted.filter((sym) => sym !== "XAU" || !rule || rule.kind === "coins") : [];
+  const base = { local, global, crypto, cryptoNote, metals, metalNote: rule && quoted.includes("XAU") ? rule.text : undefined };
   if (!s.alive) return { ok: false, reason: "This life is over", ...base };
   if (s.age < 18) return { ok: false, reason: "You can open a trading account at 18", ...base };
   if (!s.access.bank) return { ok: false, reason: "You need a bank account first", ...base };
-  if (!local && !global && !crypto) {
+  if (!local && !global && !crypto && !metals.length) {
     const mkt = country(s.country).mkt;
     const reason = mkt == null ? "There's no stock market here, and you can't invest abroad" : s.year < mkt ? `The stock market here opens in ${mkt}` : "Nothing you can buy yet";
     return { ok: !!s.desk && Object.keys(s.desk.pos).length > 0, reason, ...base };
@@ -123,7 +146,7 @@ export function monthsPlayed(s: LifeState): number {
 export function tradable(s: LifeState): Instrument[] {
   const d = s.desk;
   const a = deskAccess(s);
-  return instruments(s.country, s.macroSeed, d ? d.t : yearStartT(s.year), { local: a.local, global: a.global, crypto: a.crypto });
+  return instruments(s.country, s.macroSeed, d ? d.t : yearStartT(s.year), { local: a.local, global: a.global, crypto: a.crypto, metals: a.metals });
 }
 
 export function quote(s: LifeState, id: string, t = s.desk?.t ?? yearStartT(s.year)): number | null {
@@ -134,6 +157,7 @@ export function instrumentName(s: LifeState, id: string): string {
   if (id === "spx") return "S&P 500 fund";
   if (id.startsWith("idx:")) return `${indexName(id.slice(4))} fund`;
   if (id.startsWith("cc:")) return coinDef(id.slice(3))?.name ?? id.slice(3);
+  if (id.startsWith("mt:")) return metalDef(id.slice(3))?.name ?? id.slice(3);
   return companyById(id, s.macroSeed)?.name ?? id;
 }
 
@@ -223,7 +247,7 @@ export function quoteBuy(s: LifeState, id: string, money: number): TradeQuote | 
   if (px == null || px <= 0 || money <= 0) return null;
   const year = yearOfT(s.desk?.t ?? yearStartT(s.year));
   const commission = money * feeRate(id, year);
-  const price = px * (1 + (spreadOf(id, year) + p2pSpread(s, id)) / 2);
+  const price = px * (1 + (spreadOf(id, year) + sideSpread(s, id)) / 2);
   return { price, units: (money - commission) / price, gross: money - commission, commission, net: money };
 }
 
@@ -231,7 +255,7 @@ export function quoteSell(s: LifeState, id: string, units: number): TradeQuote |
   const px = quote(s, id);
   if (px == null || units <= 0) return null;
   const year = yearOfT(s.desk?.t ?? yearStartT(s.year));
-  const price = px * (1 - (spreadOf(id, year) + p2pSpread(s, id)) / 2);
+  const price = px * (1 - (spreadOf(id, year) + sideSpread(s, id)) / 2);
   const gross = units * price;
   const commission = gross * feeRate(id, year);
   return { price, units, gross, commission, net: gross - commission };
@@ -363,8 +387,8 @@ export function stepMonth(s: LifeState): string[] {
       d.stats.dividends += div;
       d.yearGain += div;
     }
-    if (p.id.startsWith("idx:") || p.id === "spx") {
-      const fee = fundFee(y) / 12 + (p.id === "spx" ? s.access.globalFriction / 12 : 0);
+    if (p.id.startsWith("idx:") || p.id === "spx" || p.id.startsWith("mt:")) {
+      const fee = p.id.startsWith("mt:") ? metalFee(p.id, y) / 12 : fundFee(y) / 12 + (p.id === "spx" ? s.access.globalFriction / 12 : 0);
       addFee(s, p.units * px * fee);
       p.units *= 1 - fee;
     }
@@ -372,7 +396,7 @@ export function stepMonth(s: LifeState): string[] {
     if (Math.abs(move) >= (p.id.startsWith("cc:") ? 0.3 : 0.1)) events.push(`${name} ${move > 0 ? "jumps" : "falls"} ${Math.abs(move * 100).toFixed(0)}%`);
     p.lastPrice = px;
   }
-  events.push(...cryptoMonth(s, t));
+  events.push(...cryptoMonth(s, t), ...metalMonth(s, t));
   // the local market's big months, even if you hold none of it
   if (s.access.localEq) {
     const iso = s.country;
@@ -486,6 +510,24 @@ function cryptoMonth(s: LifeState, t: number): string[] {
     if (ban && ban !== cryptoBan(s.country, yearOfT(prevT), monthOfT(prevT))) out.push(ban.text);
     const told = (text: string) => out.some((o) => CRYPTO_FAILURES.some((f) => o.includes(f.name) && text.includes(f.name)));
     out.push(...MONTH_NEWS.filter((n) => n.crypto && n.y === y && n.m === m && (!n.iso || n.iso.includes(s.country)) && !told(n.text)).map((n) => n.text));
+  }
+  return out;
+}
+
+/** Gold rules starting or ending here, and gold and silver headlines for people who hold metal. */
+function metalMonth(s: LifeState, t: number): string[] {
+  const out: string[] = [];
+  const now = goldRule(s.country, yearOfT(t), monthOfT(t));
+  const before = goldRule(s.country, yearOfT(t - 1), monthOfT(t - 1));
+  const listed = priceOf("mt:XAU", s.macroSeed, t, s.country) != null;
+  if (listed && now !== before) {
+    const text = now ? now.text : before?.end;
+    if (text) out.push(text);
+  }
+  if (Object.keys(s.desk!.pos).some((id) => id.startsWith("mt:"))) {
+    const y = yearOfT(t);
+    const m = monthOfT(t);
+    out.push(...MONTH_NEWS.filter((n) => n.metal && n.y === y && n.m === m && (!n.iso || n.iso.includes(s.country))).map((n) => n.text));
   }
   return out;
 }

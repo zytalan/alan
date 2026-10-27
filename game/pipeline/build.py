@@ -96,6 +96,30 @@ def sig(v: float | None, n: int = 4) -> float | None:
     return round(v, -int(math.floor(math.log10(abs(v)))) + (n - 1))
 
 
+# The World Bank reports exchange rates before a country joined the euro in its old currency,
+# but national accounts in euros throughout: (year joined, old units per euro, fixed for good).
+EURO_JOINED = {
+    "DEU": (1999, 1.95583), "FRA": (1999, 6.55957), "ITA": (1999, 1936.27), "ESP": (1999, 166.386),
+    "NLD": (1999, 2.20371), "BEL": (1999, 40.3399), "LUX": (1999, 40.3399), "AUT": (1999, 13.7603),
+    "PRT": (1999, 200.482), "FIN": (1999, 5.94573), "IRL": (1999, 0.787564), "GRC": (2001, 340.750),
+    "SVN": (2007, 239.640), "CYP": (2008, 0.585274), "MLT": (2008, 0.429300), "SVK": (2009, 30.1260),
+    "EST": (2011, 15.6466), "LVA": (2014, 0.702804), "LTU": (2015, 3.45280), "HRV": (2023, 7.53450),
+}
+
+
+def us_prices(wb: dict) -> list[float]:
+    """US prices by year with 2021 = 1 (GDP deflator, else CPI): dollars of a year per 2021 dollar."""
+    defl, cpi = span(wb["defl"].get("USA")), span(wb["cpi"].get("USA"))
+    rate = [(a if a is not None else b if b is not None else 2.0) / 100 for a, b in zip(defl, cpi)]
+    k21 = 2021 - Y0
+    idx = [1.0] * len(rate)
+    for i in range(k21 - 1, -1, -1):
+        idx[i] = idx[i + 1] / (1 + rate[i + 1])
+    for i in range(k21 + 1, len(rate)):
+        idx[i] = idx[i - 1] * (1 + rate[i])
+    return idx
+
+
 def median(vals: list[float]) -> float | None:
     vals = sorted(v for v in vals if v is not None)
     if not vals:
@@ -285,6 +309,25 @@ def load_coins() -> dict[str, dict[int, float]]:
     return out
 
 
+METALS = {"XAU": "Gold", "XAG": "Silver"}
+
+
+def load_metals() -> dict[str, dict[int, float]]:
+    """Monthly average USD prices per troy ounce from the World Bank's Pink Sheet, since 1960."""
+    df = pd.read_excel(RAW / "wb_cmo_monthly.xlsx", sheet_name="Monthly Prices", header=None)
+    head = [str(v).strip() for v in df.iloc[4].tolist()]
+    out: dict[str, dict[int, float]] = {}
+    for sym, col in METALS.items():
+        i = head.index(col)
+        series: dict[int, float] = {}
+        for label, v in zip(df.iloc[6:, 0], df.iloc[6:, i]):
+            if isinstance(label, str) and "M" in label and isinstance(v, (int, float)) and v > 0:
+                y, m = label.split("M")
+                series[month_index(int(y), int(m))] = float(v)
+        out[sym] = series
+    return out
+
+
 def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, isos: set[str]) -> dict:
     """Monthly market history for the trading desk, loaded only when a player opens it."""
     price, div = load_shiller()
@@ -309,12 +352,14 @@ def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, 
                 dy[iso] = [int(dp.index.min()), [rnd(dp.get(y), 4) for y in range(int(dp.index.min()), int(dp.index.max()) + 1)]]
     s = min(ind)
     coins = load_coins()
+    metals = load_metals()
     return {
         "v": 1,
         "generated": dt.date.today().isoformat(),
         "m0": M0,
         "share": {k: v for k, v in sorted(share.items()) if v},
         "cc": {sym: packed(coins[sym], 5) for sym, _ in COINS},
+        "mt": {sym: packed(metals[sym], 5) for sym in METALS},
         "usDiv": packed(usdiv, 4),
         "dy": dy,
         "ind": {
@@ -329,6 +374,7 @@ def build_markets(oecd_monthly: dict[str, dict[int, float]], jst: pd.DataFrame, 
             "Jorda-Schularick-Taylor Macrohistory Database R6: dividend yields",
             "blockchain.com charts API: daily Bitcoin market price, averaged by month",
             "Kraken public OHLC data: weekly prices of LTC, ETH, XRP, DOGE, SOL and LUNA, averaged by month",
+            "World Bank Commodity Price Data (the Pink Sheet): monthly gold and silver prices since 1960",
         ],
     }
 
@@ -366,6 +412,7 @@ def main() -> None:
     dam = load_damodaran()
     btc = load_btc()
 
+    usp = us_prices(wb)
     out_countries: dict[str, dict] = {}
     out_markets: dict[str, dict] = {}
 
@@ -436,8 +483,12 @@ def main() -> None:
         fx = g("fx")
         cc = oecd.get(iso, {}).get("CC", {})
         fx = [v if v is not None else cc.get(Y0 + i) for i, v in enumerate(fx)]
+        if iso in EURO_JOINED:
+            joined, per_euro = EURO_JOINED[iso]
+            fx = [v / per_euro if v is not None and Y0 + i < joined else v for i, v in enumerate(fx)]
+        # price level against the US: income in current dollars over income in PPP dollars of the same year
         level = [
-            (lcu[i] / fx[i]) / ppp[i] if lcu[i] and fx[i] and ppp[i] else None for i in range(len(fx))
+            (lcu[i] / fx[i]) / (ppp[i] * usp[i]) if lcu[i] and fx[i] and ppp[i] else None for i in range(len(fx))
         ]
         recent = [v for v in level[-25:] if v and 0.03 < v < 5]
         lvl_med = median(recent) or median([v for v in level if v and 0.03 < v < 5]) or 0.4

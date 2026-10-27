@@ -13,16 +13,17 @@ import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
-  addMove, adult, buyProperty, buyStock, bump, caughtInFailure, clamp, consumerRate, creditLimit, dev, ec, endBusiness, fmt, gainsTaxRate, homePrice,
-  incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay, priceToIncome, propertyValue, raiseCash, rebalance,
-  realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock, stockValue, totalDebt, usdPremium,
+  addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, consumerRate, creditLimit, dev, ec,
+  endBusiness, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay,
+  priceToIncome, propertyValue, raiseCash, rebalance, realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock,
+  stockValue, totalDebt, usdPremium,
 } from "./ops";
 import { stream, type Rng } from "./rng";
 import { graduate, startSchool, tuitionPerYear } from "./school";
 import {
   ASSET_KEYS, type Allocation, type AssetKey, type Era, type Lifestyle, type LifeState, type Setup, type Stock,
 } from "./types";
-import { country, countryIn, countryIsos, nearest, world } from "./world";
+import { country, countryIn, countryIsos, nearest, onWorldChange, world } from "./world";
 
 export const ERA_RANGES: Record<Exclude<Era, "any">, [number, number]> = {
   past: [1950, 1975],
@@ -57,6 +58,17 @@ export function birthShares(year: number): { total: number; share: Record<string
 
 export function drawCountry(year: number, r: Rng): string {
   return r.weighted(countryIsos(), (c) => birthsIn(c, year));
+}
+
+const worldBirths = new Map<number, number>();
+onWorldChange(() => worldBirths.clear());
+
+/** A birth year in an era (any: 1950 to today), weighted by how many babies the world had each year. */
+export function drawBirthYear(era: Era, r: Rng): number {
+  const [a, b] = era === "any" ? [ERA_RANGES.past[0], ERA_RANGES.now[1]] : ERA_RANGES[era];
+  const years = Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  for (const y of years) if (!worldBirths.has(y)) worldBirths.set(y, countryIsos().reduce((n, c) => n + birthsIn(c, y), 0));
+  return r.weighted(years, (y) => worldBirths.get(y)!);
 }
 
 function probit(p: number): number {
@@ -135,6 +147,9 @@ export function createLife(setup: Setup): LifeState {
   if (setup.mode === "timetravel") {
     iso = setup.country ?? "USA";
     birthYear = (setup.year ?? 1990) - (setup.startAge ?? 18);
+  } else if (setup.yearDraw === "births") {
+    birthYear = setup.birthYear ?? drawBirthYear(setup.era ?? "any", stream(seed, "birthyear"));
+    iso = setup.country ?? drawCountry(birthYear, r);
   } else {
     const era = setup.era && setup.era !== "any" ? setup.era : r.pick(["past", "recent", "now"] as const);
     const [a, b] = ERA_RANGES[era];
@@ -262,7 +277,8 @@ export function beginYear(s: LifeState): void {
   delete s.flags.incomeCut;
   const e = ec(s);
   refreshAccess(s, stream(s.seed, "access", s.year));
-  for (const n of notesFor(s.country, s.year)) log(s, n.text, "history");
+  // a time traveller knows the year's headlines as it begins; everyone else reads them once it's over
+  if (s.mode === "timetravel") for (const n of notesFor(s.country, s.year)) log(s, n.text, "history");
   if (s.flags.hpl == null && s.age >= 16) s.flags.hpl = priceToIncome(s.country) * e.wage;
   transitions(s, e, stream(s.seed, "transitions", s.year));
   if (!s.alive) return;
@@ -327,10 +343,12 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     const q = deathProbability(s.birthCountry, s.year, i === 0 ? "F" : "M", pAge, referenceHealth(pAge) + (s.parents.incomeMult - 1) * 4);
     if (r.chance(q)) {
       s.parents.alive[i] = false;
+      delete s.flags[`care${i}`];
       bump(s, "happiness", s.age < 18 ? -12 : -8);
       log(s, `Your ${i === 0 ? "mother" : "father"} dies at ${pAge}.`, "bad");
       if (!s.parents.alive[0] && !s.parents.alive[1]) {
-        const estate = (s.parents.wealthMult * w) / (s.siblings + 1);
+        // siblings who did the caring get more of what's left
+        const estate = ((Math.max(0, s.parents.wealthMult) * w) / (s.siblings + 1)) * (s.flags.careLeft ? 0.5 : 1);
         if (estate > 0.05 * w) {
           if (s.age >= 18) invest(s, estate);
           else s.cashHome += estate;
@@ -340,6 +358,25 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
         if (s.age < 18) s.parents.incomeMult *= 0.4;
       }
     }
+  }
+
+  // ---- care for a frail parent: their savings pay first, then the state's share, then you and your siblings
+  for (const i of [0, 1] as const) {
+    if (s.flags[`care${i}`] !== "home" || !s.parents.alive[i]) continue;
+    const who = i === 0 ? "mother" : "father";
+    const cost = careCost(s);
+    const fromParents = Math.min(cost, Math.max(0, s.parents.wealthMult * w));
+    s.parents.wealthMult -= fromParents / w;
+    const share = ((cost - fromParents) * (1 - careAid(s))) / (s.siblings + 1);
+    if (share > 0) {
+      const paid = share - pay(s, share);
+      addMove(s, `ev:Your ${who}'s care`, -paid);
+      log(s, `Your share of your ${who}'s care this year: ${fmt(s, paid)}.`, "money");
+    }
+  }
+  if (s.flags.care0 === "self" || s.flags.care1 === "self") {
+    bump(s, "happiness", -2);
+    bump(s, "health", -1);
   }
 
   // ---- partner
@@ -504,7 +541,8 @@ export function resolveYear(s: LifeState): void {
   } else {
     addMove(s, "bank", -applyDepositShock(s));
     // ---- income
-    const cut = Number(s.flags.incomeCut ?? 0);
+    const caring = s.flags.care0 === "self" || s.flags.care1 === "self";
+    const cut = Math.max(Number(s.flags.incomeCut ?? 0), caring ? 0.4 : 0);
     let labor = s.job ? s.job.mult * w * (1 - cut) : 0;
     if (s.flags.hustleUntil && s.year <= Number(s.flags.hustleUntil)) labor += 0.15 * w;
     const partner = s.partner?.working ? s.partner.mult * w : 0;
@@ -859,10 +897,20 @@ function record(s: LifeState, income: number, spending: number, kept: number): v
 
 // ------------------------------------------------------------------ advance
 
+/** File the year's headlines at the top of the year once it has been lived. */
+function fileHeadlines(s: LifeState): void {
+  const have = new Set(s.log.filter((l) => l.year === s.year && l.tone === "history").map((l) => l.text));
+  const notes = notesFor(s.country, s.year).filter((n) => !have.has(n.text));
+  if (!notes.length) return;
+  const at = s.log.findIndex((l) => l.year === s.year);
+  s.log.splice(at < 0 ? s.log.length : at, 0, ...notes.map((n) => ({ year: s.year, age: s.age, text: n.text, tone: "history" as const })));
+}
+
 export function advance(s: LifeState): void {
   if (s.pending.length) throw new Error("Decisions pending");
   finishDeskYear(s);
   resolveYear(s);
+  if (s.mode !== "timetravel") fileHeadlines(s);
   if (!s.alive) return;
   s.year++;
   s.age++;

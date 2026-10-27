@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import {
   buy, cancelOrder, companyById, deposit, deskAccess, deskValue, deskYearEnd, feeRate, fmt, fmtPrice, fmtUnits,
-  headlines, instrumentName, isRealMonth, liquid, memories, monthLabel, monthsPlayed, pct, placeOrder, priceOf, quote,
-  quoteBuy, quoteSell, runUntilSomething, sectorLabel, sell, setCustody, stepMonth, tradable, WALLET_FEE, withdraw, yearOfT,
-  yearStartT, type LifeState,
+  headlines, instrumentName, isRealMonth, liquid, memories, metalDef, metalFee, monthLabel, monthsPlayed, pct, placeOrder, priceOf, quote,
+  quoteBuy, quoteSell, runUntilSomething, sectorLabel, sell, setCustody, spreadOf, stepMonth, tradable, WALLET_FEE, withdraw,
+  yearOfT, yearStartT, type LifeState,
 } from "../engine";
 import { useWidth } from "./charts";
 
@@ -98,8 +98,17 @@ export function Desk({ s, version, refresh, onClose, onFinishYear }: {
             <b className="num">{fmt(s, liquid(s))}</b>
           </div>
           <div>
-            <span className="eyebrow">{selected.startsWith("cc:") ? "Exchange fee now" : "Commission now"}</span>
-            <b className="num">{pct(feeRate(selected, yearOfT(d.t)), feeRate(selected, yearOfT(d.t)) < 0.01 ? 2 : 1)}</b>
+            {selected.startsWith("mt:") ? (
+              <>
+                <span className="eyebrow">Spread now</span>
+                <b className="num">{pct(spreadOf(selected, yearOfT(d.t)), 1)}</b>
+              </>
+            ) : (
+              <>
+                <span className="eyebrow">{selected.startsWith("cc:") ? "Exchange fee now" : "Commission now"}</span>
+                <b className="num">{pct(feeRate(selected, yearOfT(d.t)), feeRate(selected, yearOfT(d.t)) < 0.01 ? 2 : 1)}</b>
+              </>
+            )}
           </div>
         </section>
         {notice.length > 0 && (
@@ -110,6 +119,7 @@ export function Desk({ s, version, refresh, onClose, onFinishYear }: {
           </div>
         )}
         {!access.ok && <p className="note">{access.reason}.</p>}
+        {access.metalNote && <p className="note">{access.metalNote}</p>}
         {access.cryptoNote && <p className="note">{access.cryptoNote}.</p>}
         <div className="dk-grid">
           <Watchlist s={s} list={list} held={held} sel={selected} onSelect={setSel} />
@@ -154,11 +164,11 @@ function Change({ x }: { x: number }) {
   );
 }
 
-const GROUPS = ["Funds", "Crypto", "Companies"]; // the few coins before the many companies
+const GROUPS = ["Funds", "Metals", "Crypto", "Companies"]; // the few before the many
 
 function Watchlist({ s, list, held, sel, onSelect }: { s: LifeState; list: ReturnType<typeof tradable>; held: string[]; sel: string; onSelect: (id: string) => void }) {
   const t = s.desk!.t;
-  const group = (id: string) => (id.startsWith("cc:") ? "Crypto" : id.startsWith("co:") ? "Companies" : "Funds");
+  const group = (id: string) => (id.startsWith("cc:") ? "Crypto" : id.startsWith("mt:") ? "Metals" : id.startsWith("co:") ? "Companies" : "Funds");
   const rows = [...list.map((i) => ({ id: i.id, name: i.name, sub: i.sub })), ...held.map((id) => ({ id, name: instrumentName(s, id), sub: "Can't be bought here now" }))]
     .map((r, k) => ({ ...r, k, g: group(r.id) }))
     .sort((a, b) => GROUPS.indexOf(a.g) - GROUPS.indexOf(b.g) || a.k - b.k);
@@ -286,7 +296,7 @@ function PriceChart({ s, id }: { s: LifeState; id: string }) {
     <div className="dk-chart">
       <div className="dk-chart-head">
         <div>
-          <span className="eyebrow">{company ? sectorLabel(company.sector) : id === "spx" ? "US stocks, priced in your currency" : id.startsWith("cc:") ? "Crypto, priced in your currency" : "Index fund"}</span>
+          <span className="eyebrow">{company ? sectorLabel(company.sector) : id === "spx" ? "US stocks, priced in your currency" : id.startsWith("cc:") ? "Crypto, priced in your currency" : id.startsWith("mt:") ? "Per troy ounce, priced in your currency" : "Index fund"}</span>
           <h3>{name}</h3>
         </div>
         <div className="seg" role="group" aria-label="Range">
@@ -435,7 +445,7 @@ function Ticket({ s, id, refresh, onNotice }: { s: LifeState; id: string; refres
   const effSide: Side = kind === "stop" ? "sell" : side;
   const q = effSide === "buy" ? quoteBuy(s, id, Math.min(amt, d.cash)) : quoteSell(s, id, Math.min(amt, pos?.units ?? 0));
   const reason =
-    !id ? "Pick something to trade" : effSide === "buy" && !canTrade ? (id.startsWith("cc:") ? "Coins can't be bought here now" : "This doesn't trade here any more") : effSide === "buy" && d.cash <= 0 ? "Move money into the account first" : effSide === "sell" && !pos ? "You don't own any" : amt <= 0 ? (effSide === "buy" ? "Enter an amount to spend" : "Enter how many to sell") : kind !== "now" && lim <= 0 ? "Enter a price" : null;
+    !id ? "Pick something to trade" : effSide === "buy" && !canTrade ? (id.startsWith("cc:") ? "Coins can't be bought here now" : id.startsWith("mt:") ? `${instrumentName(s, id)} can't be bought here now` : "This doesn't trade here any more") : effSide === "buy" && d.cash <= 0 ? "Move money into the account first" : effSide === "sell" && !pos ? "You don't own any" : amt <= 0 ? (effSide === "buy" ? "Enter an amount to spend" : "Enter how many to sell") : kind !== "now" && lim <= 0 ? "Enter a price" : null;
 
   const submit = () => {
     if (reason) return;
@@ -509,6 +519,13 @@ function Ticket({ s, id, refresh, onNotice }: { s: LifeState; id: string; refres
       <button className="btn primary" onClick={submit} disabled={!!reason} title={reason ?? undefined}>
         {reason ?? (kind === "now" ? (effSide === "buy" ? `Buy for ${fmt(s, Math.min(amt, d.cash))}` : `Sell ${fmtUnits(Math.min(amt, pos?.units ?? 0))}`) : "Place the order")}
       </button>
+      {id.startsWith("mt:") && (
+        <span className="note">
+          {yearOfT(d.t) >= (metalDef(id.slice(3))?.etf ?? 2005)
+            ? `Held through a fund that charges ${pct(metalFee(id, yearOfT(d.t)), 1)} a year.`
+            : `Bars and coins from a dealer, kept in a vault for ${pct(metalFee(id, yearOfT(d.t)), 1)} a year.`}
+        </span>
+      )}
       {id.startsWith("cc:") && pos && (
         <div className="dk-custody">
           <span className="eyebrow" id="dk-custody-label">

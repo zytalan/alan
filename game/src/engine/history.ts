@@ -128,14 +128,26 @@ export interface MonthNews {
   iso?: string[];
   major?: boolean;
   crypto?: boolean; // shown to people who hold coins, and kept off the stock charts
+  metal?: boolean; // likewise, for gold and silver
 }
 
 /** A year's dated headlines for a country (worldwide ones included), in calendar order. */
 export function monthNewsFor(iso: string, year: number): MonthNews[] {
-  return MONTH_NEWS.filter((n) => n.y === year && !n.crypto && (!n.iso || n.iso.includes(iso))).sort((a, b) => a.m - b.m);
+  return MONTH_NEWS.filter((n) => n.y === year && !n.crypto && !n.metal && (!n.iso || n.iso.includes(iso))).sort((a, b) => a.m - b.m);
 }
 
 export const MONTH_NEWS: MonthNews[] = [
+  // gold and silver, checked against the World Bank's monthly prices
+  { y: 1968, m: 3, text: "Mar · The London Gold Pool collapses. Gold gets a free-market price beside the official $35.", metal: true },
+  { y: 1980, m: 3, text: "27 Mar · Silver Thursday: the Hunt brothers' bet on silver collapses. Silver has lost more than half since January.", metal: true },
+  { y: 1999, m: 7, text: "Jul · Gold sinks to about $250, a 20-year low, as Britain starts selling more than half its gold reserves.", metal: true },
+  { y: 2004, m: 11, text: "18 Nov · The first US gold fund (an ETF) starts trading. Owning gold gets cheap.", metal: true },
+  { y: 2008, m: 3, text: "13 Mar · Gold passes $1,000 an ounce.", metal: true },
+  { y: 2011, m: 4, text: "Apr · Silver nears $50, its 1980 peak.", metal: true },
+  { y: 2011, m: 9, text: "6 Sep · Gold peaks near $1,920, then falls for four years.", metal: true },
+  { y: 2013, m: 4, text: "12–15 Apr · Gold drops 13% in two trading days, its worst fall in 30 years.", metal: true },
+  { y: 2020, m: 8, text: "4 Aug · Gold passes $2,000 an ounce for the first time.", metal: true },
+  { y: 2025, m: 10, text: "Oct · Gold passes $4,000 an ounce.", metal: true },
   // crypto, checked against blockchain.com's daily prices and Kraken's weekly ones
   { y: 2013, m: 11, text: "30 Nov · Bitcoin passes $1,000 for the first time.", crypto: true },
   { y: 2014, m: 2, text: "Feb · Mt. Gox, the biggest Bitcoin exchange, halts withdrawals and goes bankrupt.", crypto: true },
@@ -303,6 +315,37 @@ export const CRYPTO_BANS: { iso: string; from: [number, number]; to?: [number, n
 export function cryptoBan(iso: string, year: number, month: number): (typeof CRYPTO_BANS)[number] | null {
   const k = year * 12 + month;
   return CRYPTO_BANS.find((b) => b.iso === iso && k >= b.from[0] * 12 + b.from[1] && (!b.to || k <= b.to[0] * 12 + b.to[1])) ?? null;
+}
+
+/**
+ * Where private gold was restricted. "closed": no bars or coins (sell what you hold); "jewellery":
+ * no bars or coins, but gold jewellery, the way most families kept gold; "coins": no bars, so
+ * gold is bought as coins at a premium. `end` is the news when the rule lifts.
+ */
+export const GOLD_RULES: { iso: string; from: [number, number]; to: [number, number]; kind: "closed" | "jewellery" | "coins"; text: string; end?: string }[] = [
+  {
+    iso: "USA", from: [1933, 4], to: [1974, 12], kind: "closed",
+    text: "Americans may not own gold bars or coins (Executive Order 6102, 1933).",
+    end: "31 Dec 1974 · Americans may own gold again, for the first time since 1933.",
+  },
+  {
+    iso: "IND", from: [1963, 1], to: [1990, 5], kind: "jewellery",
+    text: "Gold control: Indians may not hold gold bars or coins, only jewellery.",
+    end: "Jun 1990 · India repeals the Gold (Control) Act. Gold bars and coins are legal again.",
+  },
+  { iso: "GBR", from: [1947, 1], to: [1966, 3], kind: "coins", text: "Exchange controls keep gold bars off limits. Gold coins can be bought, at a premium." },
+  { iso: "GBR", from: [1966, 4], to: [1971, 3], kind: "closed", text: "Apr 1966 · UK residents may keep at most four gold coins and can't buy more." },
+  {
+    iso: "GBR", from: [1971, 4], to: [1979, 10], kind: "coins",
+    text: "Apr 1971 · Gold coins can be bought again, at a premium. Gold bars stay off limits.",
+    end: "Oct 1979 · Exchange controls end. Gold bars are free to buy.",
+  },
+];
+
+/** The gold rule in force in a country in a month, if any. */
+export function goldRule(iso: string, year: number, month: number): (typeof GOLD_RULES)[number] | null {
+  const k = year * 12 + month;
+  return GOLD_RULES.find((b) => b.iso === iso && k >= b.from[0] * 12 + b.from[1] && k <= b.to[0] * 12 + b.to[1]) ?? null;
 }
 
 /**

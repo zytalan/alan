@@ -9,11 +9,12 @@ how much was you.
 
 ## Two ways to play
 
-- **Be born.** Your country is drawn weighted by how many babies each country had that
-  year (World Bank births), your family's place in the income distribution is random,
-  and your era is 1950–1975, 1976–2000 or 2026. Every year up to 2025 replays real
-  history for your country: wages, inflation, interest rates, exchange rates, stock and
-  housing returns, crashes, bank freezes, wars.
+- **Be born.** Your birth year is drawn from 1950 to 2026 by how many babies the world
+  had each year, or you pick it; your country is drawn weighted by how many babies each
+  country had that year (World Bank births), and your family's place in the income
+  distribution is random. Every year up to 2025 replays real history for your country:
+  wages, inflation, interest rates, exchange rates, stock and housing returns, crashes,
+  bank freezes, wars. You read a year's headlines once you've lived it, as everyone did.
 - **Go back.** Pick a year (1960–2015), a country and a family background, and wake up
   at 18 knowing what's coming. The game shows the headlines and market moves you
   remember. The catch is the path: you start with little money, may not have a bank
@@ -50,6 +51,16 @@ After the data ends, Bitcoin's months end each year at the price your savings us
 other coins follow Bitcoin with their own swings and a small yearly chance of
 collapsing, as LUNA did in May 2022.
 
+Gold and silver trade there too, at the World Bank's monthly prices since 1960: bars and
+coins from a dealer, with a 2% spread (5% for silver) and vault fees, until funds made
+them cheap (2005 for gold, 2007 for silver). Owning gold follows the law of the place:
+Americans may not hold gold bars or coins until the last day of 1974, Indians only
+jewellery from 1963 until the Gold (Control) Act is repealed in June 1990, and in
+Britain gold bars stay off limits until exchange controls end in 1979, so gold comes as
+coins at a premium (and not at all from April 1966 to March 1971). The same rules apply
+to the savings plan. After 2025 gold ends each year at the life engine's gold return;
+silver follows gold through a gold-to-silver ratio that drifts back towards 70.
+
 Companies are fictional, but each belongs to a real US industry and moves with it
 month by month (Kenneth French's 49 industry portfolios since 1926), on top of your
 country's index and its own luck: listings, takeovers, breakout years and
@@ -78,6 +89,14 @@ add up to the change exactly; anything not filed under a cause shows as "Other".
 your income, your pay is ranked in your country and the world, from the same income
 distributions that place your family at birth.
 
+Money moves between generations too. When a parent can't live alone any more you pay
+for a care home (their savings first, then the state's share where there is one, then
+you and your siblings), look after them yourself for less pay, or leave it to your
+siblings, who then get more of the estate. Grown children may ask for help with a first
+home. The statement adds up what you inherited, paid for care, gave and left, and what
+each child gets in years of a typical wage. It also draws your life as a picture to
+save or share: the coin, your peak wealth, the grade, the strip and the life's code.
+
 The life saves itself in your browser as you play. Reload or come back later and
 Continue picks up the same year; only one unfinished life is kept, so starting another
 asks first.
@@ -96,6 +115,11 @@ same health draws, same markets):
 - **Default you** makes the most common choice at every turn.
 - **Index-fund you** makes those choices but saves into a broad index and never panics.
 - **250 other people** born the same year — anywhere in the world, and in your country.
+
+Every life has a code that replays the same birth in the same world: a birth year and a
+seed (`1985-1408823311`), or year, country, family and seed for a trip back in time
+(`2013-USA-rich-1408823311`). Codes from before birth years were drawn this way are bare
+seeds, and still replay.
 
 Average real net worth across adult life is split into three multipliers: where you were
 born (your country's median vs. the world's), family and fortune (default-you vs. your
@@ -129,6 +153,7 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 | Aswath Damodaran, NYU Stern | US stocks, bills, bonds, home prices and gold, 1928–2025 | free with attribution |
 | blockchain.com charts API | Bitcoin price from 2010 | check terms before commercial use |
 | Kraken public market data API | weekly prices of Litecoin, Ether, XRP, Dogecoin, Solana and LUNA, for the desk | Kraken terms; check before commercial use |
+| World Bank Commodity Price Data (the Pink Sheet) | monthly gold and silver prices since 1960, for the desk | CC BY 4.0 |
 | OECD Financial Market statistics, monthly | share price indices for 45 countries, for the trading desk | OECD terms, attribution |
 | Robert J. Shiller, Irrational Exuberance data | monthly S&P 500 prices and dividends since 1871 | free, cite Shiller |
 | Kenneth R. French Data Library | monthly returns of 49 US industry portfolios since 1926 | free, cite the library |
@@ -145,6 +170,12 @@ gaps in the data, and every year after 2025, drawn from each country's own histo
 On the desk, simulated months are drawn so they compound exactly to the year's return
 the life engine uses; real months replay the monthly averages in the data. Companies
 are fictional; their returns are drawn so that most trail the index and a few carry it.
+
+Exchange rates are the World Bank's. Rates from before a country joined the euro are
+converted at the fixed conversion rates, so they line up with national accounts kept in
+euros. Where a year's rate implies an impossible price level next to the US (dual
+exchange rates, hyperinflation, a currency swapped for the dollar), it is rebuilt from
+prices instead.
 
 Where a currency was redenominated so often that old amounts read as zero (Brazil before
 1993, the Soviet ruble), money is shown in today's US dollars, marked with ≈. Before a

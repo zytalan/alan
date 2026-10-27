@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  country, countryIn, countryIsos, countryName, flagEmoji, hasMarkets, newGame, randomSeed, setMarkets, setWorld,
+  country, countryIn, countryIsos, countryName, flagEmoji, hasMarkets, lifeCode, newGame, randomSeed, setMarkets, setWorld,
   type LifeState, type MarketsData, type Report, type Setup, type WorldData,
 } from "../engine";
 import { Birth } from "./Birth";
@@ -133,6 +133,7 @@ export function App() {
         grade: r.age < 18 ? "—" : r.grade,
         mode: s.mode,
         seed: s.seed,
+        code: lifeCode(s),
       }),
     );
   };

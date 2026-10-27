@@ -3,7 +3,7 @@ import { fmtIn, toIntl2021, intlToUsd, usd, wageYears, type LifeState } from "..
 import { useWidth } from "./charts";
 
 // Net worth in years of the typical local wage, on a debt-to-wealth scale.
-const BINS: { max: number; token: string; label: string }[] = [
+export const BINS: { max: number; token: string; label: string }[] = [
   { max: -1, token: "--w-neg2", label: "Debt over a year's wage" },
   { max: -0.1, token: "--w-neg1", label: "Some debt" },
   { max: 0.1, token: "--w-mid", label: "About zero" },
@@ -12,7 +12,7 @@ const BINS: { max: number; token: string; label: string }[] = [
   { max: 10, token: "--w-pos3", label: "2.5–10 years" },
   { max: Infinity, token: "--w-pos4", label: "Over 10 years" },
 ];
-const binOf = (x: number) => BINS.find((b) => x < b.max) ?? BINS[BINS.length - 1];
+export const binOf = (x: number) => BINS.find((b) => x < b.max) ?? BINS[BINS.length - 1];
 
 interface Cell {
   year: number;

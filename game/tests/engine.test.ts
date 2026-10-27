@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { birthShare, drawCountry } from "../src/engine/life";
+import { birthShare, createLife, drawBirthYear, drawCountry } from "../src/engine/life";
 import { econ, toIntl2021 } from "../src/engine/macro";
 import { memories } from "../src/engine/memories";
 import { invest, liquid, netWorth, pay, raiseCash } from "../src/engine/ops";
-import { newGame, runLife, steady, typical } from "../src/engine/policy";
+import { lifeCode, newGame, parseLifeCode, runLife, steady, typical } from "../src/engine/policy";
 import { buildReport } from "../src/engine/report";
 import { Rng, stream } from "../src/engine/rng";
 import { countryIsos, setWorld, world, type WorldData } from "../src/engine/world";
@@ -31,6 +31,40 @@ describe("data", () => {
     for (let i = 0; i < 4000; i++) if (drawCountry(2023, r) === "IND") india++;
     expect(india / 4000).toBeGreaterThan(0.15);
     expect(india / 4000).toBeLessThan(0.21);
+  });
+});
+
+describe("birth years", () => {
+  it("are drawn from 1950 to today by how many babies each year had", () => {
+    const r = new Rng(11);
+    const years = Array.from({ length: 3000 }, () => drawBirthYear("any", r));
+    expect(Math.min(...years)).toBeGreaterThanOrEqual(1950);
+    expect(Math.max(...years)).toBeLessThanOrEqual(2026);
+    const share = (a: number, b: number) => years.filter((y) => y >= a && y <= b).length / years.length;
+    expect(share(2001, 2025)).toBeGreaterThan(0.28); // these never came up before
+    expect(share(2001, 2025)).toBeLessThan(0.42);
+    expect(share(2026, 2026)).toBeLessThan(0.03); // a third of lives used to start in 2026
+    expect(drawBirthYear("now", r)).toBe(2026);
+  });
+
+  it("go into a life's code, so the code replays the same birth", () => {
+    for (const setup of [
+      { mode: "random" as const, seed: 77, era: "any" as const, yearDraw: "births" as const },
+      { mode: "random" as const, seed: 78, birthYear: 2011, yearDraw: "births" as const },
+      { mode: "timetravel" as const, seed: 79, country: "KOR", year: 1997, startAge: 18, background: "poor" as const },
+    ]) {
+      const a = newGame(setup);
+      const code = lifeCode(a);
+      const b = newGame(parseLifeCode(code)!);
+      expect([b.name, b.birthCountry, b.birthYear, b.parents.incomeMult]).toEqual([a.name, a.birthCountry, a.birthYear, a.parents.incomeMult]);
+    }
+    expect(lifeCode(newGame({ mode: "random", seed: 78, birthYear: 2011, yearDraw: "births" }))).toBe("2011-78");
+    // codes from before stay bare seeds, and replay the old way
+    expect(parseLifeCode("#1408823311")).toEqual({ mode: "random", seed: 1408823311, era: "any" });
+    expect(lifeCode(createLife({ mode: "random", seed: 5, era: "any" }))).toBe("5");
+    expect(parseLifeCode("2013-usa-rich-42")).toMatchObject({ mode: "timetravel", country: "USA", year: 2013, background: "rich" });
+    expect(parseLifeCode("hello")).toBeNull();
+    expect(parseLifeCode("1949-42")).toBeNull();
   });
 });
 
@@ -91,6 +125,19 @@ describe("lives", () => {
     expect(s.alive).toBe(true);
     const mem = memories(s);
     expect(mem.some((m) => m.year === 2008)).toBe(true);
+  });
+
+  it("tell a year's headlines once it's lived, unless you came back in time", () => {
+    const s = newGame({ mode: "random", seed: 5, country: "USA", birthYear: 1970 });
+    runLife(s, typical, (t) => t.year >= 2008);
+    const heads = (x: typeof s, y: number) => x.log.filter((l) => l.year === y && l.tone === "history").map((l) => l.text);
+    expect(heads(s, 2008)).toEqual([]);
+    runLife(s, typical, (t) => t.year >= 2009);
+    expect(heads(s, 2008)[0]).toMatch(/Lehman/);
+    expect(s.log.find((l) => l.year === 2008)!.tone).toBe("history"); // filed at the top of the year
+    const tt = newGame({ mode: "timetravel", seed: 3, country: "USA", year: 2007, startAge: 18, background: "middle" });
+    runLife(tt, typical, (x) => x.year >= 2008);
+    expect(heads(tt, 2008)[0]).toMatch(/Lehman/);
   });
 });
 

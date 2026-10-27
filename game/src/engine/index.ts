@@ -5,7 +5,7 @@ export {
   advance, birthShare, birthShares, payRank, buyHome, buyListedStock, careerAction, careerOptions, choose, closeBusiness, listBusiness,
   repayDebt, sellHolding, sellHome, setAllocation, setLifestyle, stockMarket, tradeAsset, ASSET_LABEL, type CareerAction,
 } from "./life";
-export { newGame, steady, typical, runLife } from "./policy";
+export { lifeCode, newGame, parseLifeCode, steady, typical, runLife } from "./policy";
 export { buildReport, toToday, lifetimeWealth, type Report } from "./report";
 export { memories, type Memory } from "./memories";
 export {
@@ -19,10 +19,10 @@ export { randomSeed } from "./rng";
 export { monthNewsFor, type MonthNews } from "./history";
 export {
   buy, cancelOrder, commissionRate, cryptoFee, deposit, deskAccess, deskValue, deskYearEnd, ensureDesk, feeRate, fmtPrice,
-  fmtUnits, fundFee, headlines, instrumentName, monthsPlayed, placeOrder, quote, quoteBuy, quoteSell, runUntilSomething, sell,
-  setCustody, spreadOf, stepMonth, tradable, withdraw, WALLET_FEE, type DeskAccess, type TradeQuote,
+  fmtUnits, fundFee, headlines, instrumentName, metalFee, monthsPlayed, placeOrder, quote, quoteBuy, quoteSell, runUntilSomething,
+  sell, setCustody, spreadOf, stepMonth, tradable, withdraw, WALLET_FEE, type DeskAccess, type TradeQuote,
 } from "./desk";
 export {
-  coinDef, coinUsd, COINS, companyById, dividendYield, hasMarkets, indexLevel, indexName, isRealMonth, monthLabel, monthOfT,
-  priceOf, sectorLabel, setMarkets, tOf, yearOfT, yearStartT, MONTHS, type Instrument, type MarketsData,
+  coinDef, coinUsd, COINS, companyById, dividendYield, hasMarkets, indexLevel, indexName, isRealMonth, metalDef, metalUsd, METALS,
+  monthLabel, monthOfT, priceOf, sectorLabel, setMarkets, tOf, yearOfT, yearStartT, MONTHS, type Instrument, type MarketsData,
 } from "./markets";

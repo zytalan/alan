@@ -16,6 +16,9 @@ export interface Setup {
   seed: number;
   macroSeed?: number;
   era?: Era;
+  // "births": the year is drawn by how many babies each year had, from its own stream. Lives from
+  // before October 2026 drew an era, then a year in it; their codes are bare seeds.
+  yearDraw?: "births";
   // time travel
   country?: string;
   year?: number;

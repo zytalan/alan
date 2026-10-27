@@ -1,11 +1,65 @@
 import { useEffect, useState } from "react";
 import {
-  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, localUnitsReadable, nearest, oneIn, pct,
+  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, lifeCode, localUnitsReadable, nearest, oneIn, pct,
   toIntl2021, usd, wageYears, type LifeState, type Report,
 } from "../engine";
 import { formatMult, LifeChart, LuckBars } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
 import { LifeStrip } from "./LifeStrip";
+import { ShareImage } from "./ShareCard";
+
+/** Money that passed between generations: what you inherited, gave and left. */
+function FamilyMoney({ s, r }: { s: LifeState; r: Report }) {
+  const today = (h: LifeState["history"][number], amount: number) => intlToUsd(s.macroSeed, toIntl2021(h.country, s.macroSeed, h.year, amount));
+  let inherited = 0;
+  let care = 0;
+  let given = 0;
+  for (const h of s.history) {
+    for (const [k, v] of Object.entries(h.moves ?? {})) {
+      if (k === "inherit") inherited += today(h, v);
+      else if (/^ev:Your (mother|father)'s care$/.test(k)) care -= today(h, v);
+      else if (k.startsWith("ev:A deposit for ")) given -= today(h, v);
+    }
+  }
+  const kids = s.kids.length;
+  const last = s.history[s.history.length - 1];
+  if (!kids && inherited <= 0 && care <= 0) return null;
+  const left = Math.max(0, r.finalUsd);
+  const each = kids ? left / kids : 0;
+  const eachWy = kids && last ? wageYears(s, Math.max(0, last.netWorth) / kids, last.year, last.country) : 0;
+  return (
+    <section className="card">
+      <span className="eyebrow">What passed between generations, in today's US dollars</span>
+      <div className="kv">
+        <span>You inherited</span>
+        <span className="num">{inherited > 0 ? usd(inherited) : "Nothing"}</span>
+        {care > 0 && (
+          <>
+            <span>Your share of your parents' care</span>
+            <span className="num">{usd(care)}</span>
+          </>
+        )}
+        {given > 0 && (
+          <>
+            <span>Given to your children while you lived</span>
+            <span className="num">{usd(given)}</span>
+          </>
+        )}
+        <span>You left</span>
+        <span className="num">{r.finalUsd < 0 ? `debts of ${usd(-r.finalUsd)}` : usd(left)}</span>
+      </div>
+      <p style={{ margin: 0 }}>
+        {!kids
+          ? "You had no children. What you left goes to the rest of your family."
+          : s.partner
+            ? `It goes to ${s.partner.name} first, then to your ${kids === 1 ? "child" : `${kids} children`}.`
+            : left > 0
+              ? `${kids === 1 ? "Your child inherits" : `Each of your ${kids} children inherits`} ${usd(each)}: ${eachWy >= 0.1 ? `${eachWy.toFixed(1)} years of a typical wage in ${countryName(last!.country)}` : "less than a month's typical pay"}.`
+              : `Your ${kids === 1 ? "child inherits" : "children inherit"} nothing.`}
+      </p>
+    </section>
+  );
+}
 
 const MONEY_FOR: Record<string, string> = {
   security: "security",
@@ -97,7 +151,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     `Peak wealth ≈ ${usd(r.peakUsd)} in today's money; richer over a lifetime than ${beat(r.worldPct)} of people born that year`,
     `Birth ${formatMult(r.luck.country)} · Fortune ${formatMult(r.luck.family)} · Choices ${formatMult(r.luck.choices)} (grade ${r.grade})`,
     r.hindsight ? `Time travel: captured ${captured(r.hindsight.captured)} of perfect hindsight` : "",
-    `Life code #${s.seed}`,
+    `Life code ${lifeCode(s)}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -233,6 +287,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
         </div>
       </section>
 
+      <FamilyMoney s={s} r={r} />
+
       <section className="card">
         <span className="eyebrow">Net worth by age, in today's US dollars</span>
         <LifeChart series={series} title="Net worth by age: you, default-you and index-fund you" />
@@ -245,6 +301,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
       <section className="grid2">
         <div className="card share">
           <span className="eyebrow">Share this life</span>
+          <ShareImage s={s} r={r} />
           <pre id="share-text">{share}</pre>
           <div className="actions">
             <button className="btn small" onClick={copy}>

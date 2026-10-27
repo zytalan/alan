@@ -13,6 +13,7 @@ Sources
 - Robert Shiller's ie_data.xls: monthly S&P 500 prices and dividends since 1871
 - Kenneth French Data Library: monthly returns of 49 US industry portfolios since 1926
 - Kraken public market data: weekly prices of six more coins, each from its first week on Kraken
+- World Bank commodity prices (the Pink Sheet): monthly gold and silver since 1960
 """
 
 from __future__ import annotations
@@ -71,7 +72,12 @@ URLS = {
     "btc_market_price.json": "https://api.blockchain.info/charts/market-price?timespan=all&format=json&sampled=false",
     "kf_49_industries.zip": "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/49_Industry_Portfolios_CSV.zip",
     "shiller_ie_data.xls": "https://shillerdata.com/",  # resolved to the current file link at download time
+    "wb_cmo_monthly.xlsx": "https://www.worldbank.org/en/research/commodity-markets",  # likewise
 }
+CMO_FALLBACK = (
+    "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/"
+    "CMO-Historical-Data-Monthly.xlsx"
+)
 SHILLER_FALLBACK = (
     "https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/downloads/"
     "1449043e-a1ed-4e2e-8e9c-7b9a2a064493/ie_data.xls"
@@ -101,12 +107,28 @@ def shiller_link() -> str:
     return SHILLER_FALLBACK
 
 
+def cmo_link() -> str:
+    """The World Bank's monthly commodity prices (the Pink Sheet) move to a new URL each month."""
+    req = urllib.request.Request(URLS["wb_cmo_monthly.xlsx"], headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            page = resp.read().decode("utf-8", "replace")
+        m = re.search(r'(https://thedocs\.worldbank\.org/[^"\']+/CMO-Historical-Data-Monthly\.xlsx)', page)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return CMO_FALLBACK
+
+
 def download(name: str, url: str, force: bool) -> str:
     dest = RAW / name
     if dest.exists() and dest.stat().st_size > 0 and not force:
         return f"cached  {name}"
     if name == "shiller_ie_data.xls":
         url = shiller_link()
+    elif name == "wb_cmo_monthly.xlsx":
+        url = cmo_link()
     last_err: Exception | None = None
     for attempt in range(4):
         try:

@@ -12,9 +12,9 @@ import { econ, type YearEcon } from "./macro";
 import { referenceHealth } from "./mortality";
 import { liquidateDesk, shrinkDesk } from "./desk";
 import {
-  adult, buyProperty, buyStock, bump, canStartBusiness, clamp, consumerRate, dev, ec, eduAtLeast, endBusiness, fmt,
-  homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay,
-  raiseCash, rebalance, retirementAge, salary, sellProperty, startBusiness, stockValue, takeJob, W, type Offer,
+  adult, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, consumerRate, dev, ec, eduAtLeast, endBusiness,
+  fmt, homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay, raiseCash,
+  rebalance, retirementAge, salary, sellProperty, startBusiness, stockValue, takeJob, W, type Offer,
 } from "./ops";
 import { stream, type Rng } from "./rng";
 import { admissionChance, startSchool, tuitionPerYear, universityClosed } from "./school";
@@ -69,6 +69,17 @@ export function enqueue(s: LifeState, id: string, payload: Record<string, unknow
   const seq = Number(s.flags.dseq ?? 0) + 1;
   s.flags.dseq = seq;
   s.pending.push({ id: `d${seq}`, event: id, year: s.year, tag: def.tag, title: b.title, body: b.body, options: b.options, payload: b.payload ?? payload });
+}
+
+/** A living parent old enough to need care, with nothing arranged yet. */
+function frailParent(s: LifeState): 0 | 1 | null {
+  const need = ([0, 1] as const).filter((i) => s.parents.alive[i] && !s.flags[`care${i}`] && s.age + s.parents.ageAtBirth[i] >= 75);
+  return need.length ? need.reduce((a, b) => (s.parents.ageAtBirth[a] >= s.parents.ageAtBirth[b] ? a : b)) : null;
+}
+
+/** A child between 25 and 35 who hasn't asked for help with a home yet. */
+function grownKidBuying(s: LifeState) {
+  return s.kids.find((k) => s.year - k.born >= 25 && s.year - k.born <= 35 && s.flags[`deposit:${k.name}`] == null) ?? null;
 }
 
 /** Holdings changed by a one-off trade: make the target mix follow what the player now holds. */
@@ -1225,6 +1236,79 @@ const DEFS: EventDef[] = [
         bump(s, "happiness", 3);
         bump(s, "network", 3);
       } else bump(s, "happiness", -5);
+    },
+  },
+  {
+    id: "parent_care",
+    tag: "life",
+    forced: true,
+    chance: (s) => {
+      const i = frailParent(s);
+      return i == null || !adult(s) || s.age < 25 ? 0 : clamp((s.age + s.parents.ageAtBirth[i] - 74) * 0.04, 0.04, 0.35);
+    },
+    build: (s, c) => {
+      const i = frailParent(s);
+      if (i == null) return null;
+      const who = i === 0 ? "mother" : "father";
+      const cost = careCost(s);
+      const theirs = Math.max(0, s.parents.wealthMult * c.w);
+      const aid = careAid(s);
+      const yours = (Math.max(0, cost - theirs) * (1 - aid)) / (s.siblings + 1);
+      const home = dev(s) >= 0.45;
+      return {
+        title: `Your ${who} needs care`,
+        body:
+          `Your ${who} is ${s.age + s.parents.ageAtBirth[i]} and can't live alone any more. ${home ? "A care home" : "A carer at home"} costs about ${fmt(s, cost)} a year here.` +
+          (theirs >= 0.1 * c.w ? ` Their savings, ${fmt(s, theirs)}, pay first.` : "") +
+          (aid >= 0.5 ? " Once they're spent, the state pays most of it." : aid > 0 ? " Once they're spent, the state helps a little." : "") +
+          (s.siblings ? ` You'd split the rest with ${s.siblings === 1 ? "your sibling" : `your ${s.siblings} siblings`}.` : ""),
+        options: [
+          o("home", home ? "Pay for a care home" : "Pay for a carer", yours > 0 ? `About ${fmt(s, yours)} a year from you` : "Their savings cover it for now"),
+          o("self", "Look after them yourself", s.job ? "About 40% less pay while they need you" : "It will wear on you"),
+          ...(s.siblings ? [o("siblings", "Leave it to your siblings", "Free now. The family will remember")] : []),
+        ],
+        payload: { i },
+      };
+    },
+    resolve: (s, _c, p, opt) => {
+      const i = Number(p.i);
+      const who = i === 0 ? "mother" : "father";
+      s.flags[`care${i}`] = opt;
+      if (opt === "home") log(s, dev(s) >= 0.45 ? `Your ${who} moves into a care home.` : `You pay a carer to look after your ${who}.`, "neutral");
+      else if (opt === "self") {
+        bump(s, "network", 3);
+        log(s, `You cut back at work to look after your ${who}.`, "neutral");
+      } else {
+        s.flags.careLeft = true;
+        bump(s, "happiness", -4);
+        bump(s, "network", -6);
+        log(s, `Your siblings take on your ${who}'s care.`, "neutral");
+      }
+    },
+  },
+  {
+    id: "kid_deposit",
+    tag: "money",
+    cooldown: 3,
+    chance: (s, c) => (adult(s) && grownKidBuying(s) && liquid(s) >= 1.5 * c.w ? 0.15 : 0),
+    build: (s, c) => {
+      const k = grownKidBuying(s);
+      if (!k) return null;
+      const amt = Math.min(1.5 * c.w, 0.3 * liquid(s));
+      return {
+        title: `A deposit for ${k.name}`,
+        body: `${k.name} is ${s.year - k.born} and buying a first home, but is short of the deposit.`,
+        options: [o("all", `Give ${fmt(s, amt)}`, "A head start you won't see again"), o("half", `Give ${fmt(s, amt / 2)}`), o("no", "They'll manage")],
+        payload: { name: k.name, amt },
+      };
+    },
+    resolve: (s, _c, p, opt) => {
+      s.flags[`deposit:${p.name}`] = s.year;
+      if (opt === "no") return;
+      const amt = Number(p.amt) * (opt === "half" ? 0.5 : 1);
+      pay(s, amt);
+      bump(s, "happiness", 3);
+      log(s, `You give ${p.name} ${fmt(s, amt)} towards a first home.`, "money");
     },
   },
   {

@@ -1,6 +1,6 @@
 // Monthly market history for the trading desk. Where the data has real monthly
 // prices (OECD share indices, Shiller's S&P 500, Kenneth French's US industries,
-// blockchain.com's and Kraken's coin prices) the desk replays them; everywhere
+// blockchain.com's and Kraken's coin prices, the World Bank's gold and silver) the desk replays them; everywhere
 // else — countries without data, gaps, and
 // every year after the data ends — the twelve months are drawn so they compound
 // exactly to the yearly return the life engine already uses. Draws come from
@@ -21,6 +21,7 @@ export interface MarketsData {
   dy: Record<string, [number, (number | null)[]]>; // yearly dividend yields (JST)
   ind: { start: number; names: string[]; r: Record<string, (number | null)[]> }; // % × 100
   cc?: Record<string, [number, (number | null)[]]>; // coins: monthly average USD prices
+  mt?: Record<string, [number, (number | null)[]]>; // gold and silver: monthly average USD per troy ounce
   sources: string[];
 }
 
@@ -502,9 +503,85 @@ export function coinUsd(sym: string, macroSeed: number, t: number): number | nul
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
+// ------------------------------------------------------------------ gold and silver
+
+export interface MetalDef {
+  sym: string;
+  name: string;
+  etf: number; // first full year a cheap exchange-traded fund held it
+  spread: [number, number]; // bid-ask spread from a bullion dealer, then from the fund
+  fee: [number, number]; // yearly storage and insurance, then the fund's fee
+}
+
+export const METALS: MetalDef[] = [
+  { sym: "XAU", name: "Gold", etf: 2005, spread: [0.02, 0.002], fee: [0.006, 0.004] },
+  { sym: "XAG", name: "Silver", etf: 2007, spread: [0.05, 0.004], fee: [0.01, 0.005] },
+];
+const METAL = Object.fromEntries(METALS.map((m) => [m.sym, m]));
+
+export function metalDef(sym: string): MetalDef | null {
+  return METAL[sym] ?? null;
+}
+
+/** A metal's recorded months up to the December of the last complete year, NaN elsewhere. */
+function metalData(sym: string): { px: Float64Array; last: number } {
+  const px = new Float64Array(N_MONTHS).fill(NaN);
+  const series = MD?.mt?.[sym];
+  let last = -1;
+  for (let y = FIRST_YEAR; y <= LAST_YEAR && series; y++) {
+    const months = Array.from({ length: 12 }, (_, m) => dataAt(series, tOf(y, m + 1)));
+    if (months.some((v) => v == null || v <= 0)) {
+      if (last >= 0) break;
+      continue;
+    }
+    months.forEach((v, m) => (px[tOf(y, m + 1)] = v!));
+    last = tOf(y, 12);
+  }
+  return { px, last };
+}
+
+/** Gold in US dollars: recorded months, then years that end at the life engine's gold return, so the desk and your savings hold the same gold. */
+function goldPath(macroSeed: number): Float64Array {
+  return memo(`mt|XAU|${macroSeed}`, () => {
+    const { px, last } = metalData("XAU");
+    for (let t = last; t >= 0 && t < N_MONTHS - 1; ) {
+      const y = yearOfT(t + 1);
+      const end = Math.min(tOf(y, 12), N_MONTHS - 1);
+      const total = Math.log(Math.max(0.05, 1 + econ("USA", macroSeed, y).gold));
+      const steps = bridgeN(stream(macroSeed, "metalmonths", "XAU", y), total, end - t, 0.15 / Math.sqrt(12));
+      for (let i = 0; i < steps.length; i++) px[t + i + 1] = px[t + i] * Math.exp(steps[i]);
+      t = end;
+    }
+    return px;
+  });
+}
+
+/** Silver: recorded months, then gold divided by a gold-to-silver ratio that wanders and drifts back towards 70. */
+function silverPath(macroSeed: number): Float64Array {
+  return memo(`mt|XAG|${macroSeed}`, () => {
+    const { px, last } = metalData("XAG");
+    const gold = goldPath(macroSeed);
+    if (last < 0) return px;
+    let ratio = Math.log(gold[last] / px[last]);
+    for (let t = last + 1; t < N_MONTHS; t++) {
+      const r = stream(macroSeed, "metalmonth", "XAG", t);
+      ratio += (0.15 / 12) * (Math.log(70) - ratio) + (0.2 / Math.sqrt(12)) * r.fat(0, 1);
+      px[t] = gold[t] / Math.exp(clamp(ratio, Math.log(15), Math.log(150)));
+    }
+    return px;
+  });
+}
+
+/** A metal's price in US dollars per troy ounce at month t, or null before the data starts. */
+export function metalUsd(sym: string, macroSeed: number, t: number): number | null {
+  if (!METAL[sym] || t < 0 || t >= N_MONTHS) return null;
+  const v = (sym === "XAU" ? goldPath(macroSeed) : silverPath(macroSeed))[t];
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 // ------------------------------------------------------------------ instruments
 
-export type InstKind = "index" | "spx" | "company" | "coin";
+export type InstKind = "index" | "spx" | "company" | "coin" | "metal";
 
 export interface Instrument {
   id: string;
@@ -524,7 +601,12 @@ export function indexName(iso: string): string {
 }
 
 /** What a player in `iso` can trade at month t. */
-export function instruments(iso: string, macroSeed: number, t: number, access: { local: boolean; global: boolean; crypto?: boolean }): Instrument[] {
+export function instruments(
+  iso: string,
+  macroSeed: number,
+  t: number,
+  access: { local: boolean; global: boolean; crypto?: boolean; metals?: string[] },
+): Instrument[] {
   const out: Instrument[] = [];
   if (access.local) out.push({ id: `idx:${iso}`, kind: "index", name: `${indexName(iso)} fund`, sub: "Index fund" });
   if (access.global && iso !== "USA") out.push({ id: "spx", kind: "spx", name: "S&P 500 fund", sub: "US stocks, in dollars" });
@@ -532,6 +614,9 @@ export function instruments(iso: string, macroSeed: number, t: number, access: {
     for (const c of companies(iso, macroSeed)) {
       if (t >= c.listT && t <= c.endT) out.push({ id: c.id, kind: "company", name: c.name, sub: SECTOR[c.sector].label, company: c });
     }
+  }
+  for (const m of METALS) {
+    if (access.metals?.includes(m.sym) && metalUsd(m.sym, macroSeed, t) != null) out.push({ id: `mt:${m.sym}`, kind: "metal", name: m.name, sub: "Metal · per troy ounce" });
   }
   if (access.crypto) {
     for (const c of COINS) if (coinUsd(c.sym, macroSeed, t) != null) out.push({ id: `cc:${c.sym}`, kind: "coin", name: c.name, sub: `Crypto · ${c.sym}` });
@@ -546,8 +631,8 @@ export function sectorLabel(key: string): string {
 /** Price of an instrument in month t, in the local currency of `home`. Null when it doesn't trade. */
 export function priceOf(id: string, macroSeed: number, t: number, home: string): number | null {
   if (id === "spx") return indexLevel("USA", macroSeed, t) * fxAt(home, macroSeed, t);
-  if (id.startsWith("cc:")) {
-    const usd = coinUsd(id.slice(3), macroSeed, t);
+  if (id.startsWith("cc:") || id.startsWith("mt:")) {
+    const usd = id.startsWith("cc:") ? coinUsd(id.slice(3), macroSeed, t) : metalUsd(id.slice(3), macroSeed, t);
     return usd == null ? null : usd * fxAt(home, macroSeed, t);
   }
   if (id.startsWith("idx:")) return indexLevel(id.slice(4), macroSeed, t);
@@ -567,6 +652,7 @@ export function isRealMonth(id: string, macroSeed: number, t: number): boolean {
   if (id === "spx") return indexPath("USA", macroSeed).real[t] === 1;
   if (id.startsWith("idx:")) return indexPath(id.slice(4), macroSeed).real[t] === 1;
   if (id.startsWith("cc:")) return dataAt(MD?.cc?.[id.slice(3)], t) != null;
+  if (id.startsWith("mt:")) return t <= memoSmall(`mtlast|${id}`, () => metalData(id.slice(3)).last) && dataAt(MD?.mt?.[id.slice(3)], t) != null;
   return false;
 }
 

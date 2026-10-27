@@ -515,6 +515,7 @@ body::before {
 .figure .v { font-size: clamp(34px, 6vw, 56px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
 .figure p { margin: 6px 0 0; color: var(--ink-2); max-width: 60ch; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.grid2 > .card { align-content: start; }
 .luck { display: grid; gap: 14px; }
 .luck-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 64px; gap: 12px; align-items: center; font-size: 14px; }
 .luck-row .track { position: relative; height: 24px; }
@@ -729,6 +730,9 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 .dk-custody { display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 10px; }
 .dk-tag { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 11px; color: var(--muted); }
 .dk-loss { color: var(--stamp); }
+.share-card { display: grid; gap: 8px; }
+.share-card img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: var(--radius); }
+.share-card-wait { aspect-ratio: 1200 / 630; display: grid; place-items: center; background: var(--sheet-2); border-radius: var(--radius); color: var(--muted); font-size: 14px; }
 .dk-stats { border-top: 1px solid var(--rule); padding-top: 10px; }
 .dk-news ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); }
 @media (max-width: 1100px) {

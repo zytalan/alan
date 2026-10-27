@@ -8,7 +8,7 @@ import { toIntl2021 } from "./macro";
 import { dev, liquid, log, retirementAge } from "./ops";
 import { stream } from "./rng";
 import type { Decision, LifeState, Setup } from "./types";
-import { country, countryIn } from "./world";
+import { country, countryIn, countryIsos } from "./world";
 
 export type Chooser = (s: LifeState, d: Decision) => string;
 
@@ -111,6 +111,10 @@ export const typical: Chooser = (s, d) => {
       return dev(s) >= 0.6 ? "buy" : "no";
     case "parents_support":
       return "yes";
+    case "parent_care":
+      return dev(s) >= 0.75 && r < 0.6 ? "home" : dev(s) >= 0.45 && r < 0.3 ? "home" : r < 0.2 ? prefer(d, "siblings", "self") : "self";
+    case "kid_deposit":
+      return r < 0.5 ? "half" : "no";
     case "sibling_loan":
       return "lend";
     case "kid_college":
@@ -205,6 +209,34 @@ export function newGame(setup: Setup): LifeState {
     log(s, `You open your eyes. It's ${s.year}. You're ${age} again, in ${countryIn(s.country)} — and you remember everything that's coming.`, "milestone");
   }
   return s;
+}
+
+/**
+ * A life's code: enough to replay the same birth in the same world. "1985-1408823311" is a birth
+ * year and a seed, "2013-USA-rich-1408823311" a trip back in time, and a bare seed a life from
+ * before birth years were drawn by births.
+ */
+export function lifeCode(s: LifeState): string {
+  const st = s.setup;
+  if (st.mode === "timetravel") return [st.year ?? s.birthYear + s.startAge, st.country ?? s.birthCountry, st.background ?? "middle", s.seed].join("-");
+  return st.yearDraw === "births" ? `${s.birthYear}-${s.seed}` : String(s.seed);
+}
+
+/** The setup a code stands for, or null if it isn't one. */
+export function parseLifeCode(code: string): Setup | null {
+  const parts = code.trim().replace(/^#/, "").split(/[\s\-–—·#]+/).filter(Boolean);
+  const int = (x: string) => (/^\d+$/.test(x) ? Number(x) : NaN);
+  const seed = int(parts[parts.length - 1] ?? "");
+  if (!(seed > 0 && seed < 2 ** 32)) return null;
+  if (parts.length === 1) return { mode: "random", seed, era: "any" };
+  const year = int(parts[0]);
+  if (parts.length === 2 && year >= 1950 && year <= 2026) return { mode: "random", seed, birthYear: year, yearDraw: "births" };
+  const iso = (parts[1] ?? "").toUpperCase();
+  const bg = (parts[2] ?? "").toLowerCase();
+  if (parts.length === 4 && year >= 1960 && year <= 2015 && countryIsos().includes(iso) && (bg === "poor" || bg === "middle" || bg === "rich")) {
+    return { mode: "timetravel", seed, country: iso, year, startAge: 18, background: bg };
+  }
+  return null;
 }
 
 /** Replay a life from its setup with a different chooser, to the same age (or to the end). */
