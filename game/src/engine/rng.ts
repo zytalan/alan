@@ -61,6 +61,15 @@ export class Rng {
     return items[Math.floor(this.next() * items.length)];
   }
 
+  shuffle<T>(items: readonly T[]): T[] {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
   weighted<T>(items: readonly T[], weight: (item: T) => number): T {
     let total = 0;
     for (const it of items) total += Math.max(0, weight(it));

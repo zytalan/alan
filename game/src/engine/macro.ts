@@ -335,8 +335,11 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
       eq = dEq;
       realEq = true;
     } else {
-      // eqMu is a mean log return, so draw in log space; crashes are paid for by a small premium
-      let lr = k.eqMu + 0.01 + k.eqVol * (rho * gy.z + Math.sqrt(1 - rho * rho) * r.fat(0, 1)) + 1.2 * (growth - gMu);
+      // eqMu is a mean log return, so draw in log space; crashes are paid for by a small premium.
+      // Past the data, a young market's wild swings settle toward a mature one's, as growth and inflation do.
+      const mu = k.eqMu + (Math.min(k.eqMu, 0.055) - k.eqMu) * fade;
+      const vol = k.eqVol + (Math.min(k.eqVol, k.dev > 0.75 ? 0.17 : 0.22) - k.eqVol) * fade;
+      let lr = mu + 0.01 + vol * (rho * gy.z + Math.sqrt(1 - rho * rho) * r.fat(0, 1)) + 1.2 * (growth - gMu);
       if (r.chance(0.04)) lr -= r.range(0.15, 0.35);
       eq = clamp(Math.exp(lr) * (1 + infl) - 1, -0.85, 4);
     }

@@ -21,6 +21,30 @@ how much was you.
   account or access to the stock market, capital controls can block foreign assets, life
   shocks force sales at the bottom, and exchanges like Mt. Gox can take your coins.
 
+## Decisions
+
+An adult life meets about 55 decisions, drawn from 97 kinds, and almost all have three
+or four ways to answer. Some arrive on cue: what you do after school, a first job, where
+your first savings go, looking back at 30, 50 and 70. The rest come by chance. The order
+is shuffled every year so no event crowds out the others. Career, family and health
+events always get their turn, other chance events are held to one or two a year, and the
+ones that tend to recur come back less often each time (a second lottery rollover is less
+likely than the first). Frequent events change their wording: a layoff has a reason, a
+promotion a new title, and a crash says how many you've lived through and what you did
+last time.
+
+Many choices last. A pet, car payments, a gym, cigarettes, overtime, app work, a
+side job, part-time work, an employer's pension match, a lodger or money sent home
+become yearly income or costs, in typical wages so they keep up with prices, until they
+end. The ones tied to a job stop when the job does. Others settle later: a flat you
+renovate sells two years on, a loan you co-signed may fall to you, a friend may pay you
+back.
+
+Some decisions belong to a place and a time: a savings circle under its local name (a
+susu in Ghana, a chama in Kenya, a tanda in Mexico, an arisan in Indonesia, a hui in
+China), British Gas shares in 1986, Russia's privatisation vouchers in 1992–93, the
+housing booms of 2004–06 in the US, Spain, Ireland and Britain, and the 2020 lockdowns.
+
 ## The trading desk
 
 From 18, with a bank account and a stock market to reach, you can open a brokerage
@@ -91,7 +115,8 @@ distributions that place your family at birth.
 
 Money moves between generations too. When a parent can't live alone any more you pay
 for a care home (their savings first, then the state's share where there is one, then
-you and your siblings), look after them yourself for less pay, or leave it to your
+you and your siblings), move them in with you (a carer by day costs a quarter as much,
+and you work a little less), look after them yourself for less pay, or leave it to your
 siblings, who then get more of the estate. Grown children may ask for help with a first
 home. The statement adds up what you inherited, paid for care, gave and left, and what
 each child gets in years of a typical wage. It also draws your life as a picture to
@@ -167,7 +192,9 @@ exchange failures and repayments, national bans and the big price headlines. The
 
 What is simulated rather than replayed: markets in countries with no stock-market data,
 gaps in the data, and every year after 2025, drawn from each country's own history.
-On the desk, simulated months are drawn so they compound exactly to the year's return
+Over the 30 years after the data, growth, inflation and stock-market swings settle
+towards those of a mature economy, so a young market's wildest decades don't repeat
+for a century. On the desk, simulated months are drawn so they compound exactly to the year's return
 the life engine uses; real months replay the monthly averages in the data. Companies
 are fictional; their returns are drawn so that most trail the index and a few carry it.
 

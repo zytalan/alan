@@ -13,38 +13,46 @@ onWorldChange(() => tableCache.clear());
 
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 
+// The Gompertz hazard over each year of age, per unit of b/θ: e^θ(x+1) − e^θx.
+const STEP = Float64Array.from({ length: MAX_AGE + 1 }, (_, x) => Math.exp(THETA * (x + 1)) - Math.exp(THETA * x));
+
 function buildTable(e0: number, imr: number, u5: number): Float64Array {
   const q0 = clamp(imr / 1000, 0.001, 0.3);
   const q14 = clamp(1 - ((1 - clamp(u5 / 1000, q0, 0.45)) / (1 - q0)) ** 0.25, 0.0001, 0.1);
   const makeham = 0.0004 + 0.02 * clamp(u5 / 1000, 0, 0.3);
-  const q = new Float64Array(MAX_AGE + 1);
-  const fill = (b: number) => {
-    q[0] = q0;
-    for (let x = 1; x <= 4; x++) q[x] = q14;
-    for (let x = 5; x <= MAX_AGE; x++) {
-      const h = makeham + (b / THETA) * (Math.exp(THETA * (x + 1)) - Math.exp(THETA * x));
-      q[x] = x === MAX_AGE ? 1 : 1 - Math.exp(-h);
-    }
-  };
-  const lifeExp = () => {
-    let l = 1;
-    let e = 0;
-    for (let x = 0; x <= MAX_AGE; x++) {
-      const next = l * (1 - q[x]);
+  // The first five years don't depend on b, so the search starts from age 5.
+  let l5 = 1;
+  let e5 = 0;
+  for (let x = 0; x <= 4; x++) {
+    const next = l5 * (1 - (x === 0 ? q0 : q14));
+    e5 += (l5 + next) / 2;
+    l5 = next;
+  }
+  const lifeExp = (b: number) => {
+    const c = b / THETA;
+    let l = l5;
+    let e = e5;
+    for (let x = 5; x < MAX_AGE; x++) {
+      const next = l * Math.exp(-(makeham + c * STEP[x]));
       e += (l + next) / 2;
       l = next;
     }
-    return e;
+    return e + l / 2;
   };
+  // 20 halvings pin b to within 0.002% — far finer than the quarter-year e0 is rounded to.
   let lo = Math.log(1e-8);
   let hi = Math.log(0.3);
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    fill(Math.exp(mid));
-    if (lifeExp() > e0) lo = mid;
+    if (lifeExp(Math.exp(mid)) > e0) lo = mid;
     else hi = mid;
   }
-  fill(Math.exp((lo + hi) / 2));
+  const c = Math.exp((lo + hi) / 2) / THETA;
+  const q = new Float64Array(MAX_AGE + 1);
+  q[0] = q0;
+  for (let x = 1; x <= 4; x++) q[x] = q14;
+  for (let x = 5; x < MAX_AGE; x++) q[x] = 1 - Math.exp(-(makeham + c * STEP[x]));
+  q[MAX_AGE] = 1;
   return q;
 }
 

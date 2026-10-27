@@ -68,6 +68,7 @@ export interface Property {
   rate: number;
   payment: number;
   bought: number;
+  personal?: boolean; // a holiday home you keep for yourself: no rent comes in
 }
 
 export type BizType = "stall" | "shop" | "trading" | "workshop" | "agency" | "tech";
@@ -98,6 +99,26 @@ export interface Kid {
   name: string;
   born: number;
   sex: Sex;
+}
+
+/** A yearly cost or income that runs for a while: a pet, a car loan, school fees, an employer's pension match. */
+export interface Recurring {
+  key: string;
+  label: string;
+  wage: number; // a year's amount in typical local wages: negative costs, positive brings money in
+  until: number; // last year it runs
+  needsJob?: boolean; // stops when you're out of work
+  health?: number; // yearly nudges to your stats
+  happiness?: number;
+}
+
+/** Money that arrives, or falls due, in a later year: a renovation sold, a savings circle's pot, a loan you co-signed. */
+export interface Due {
+  key: string;
+  year: number;
+  wage: number; // in typical local wages of that year: positive comes in, negative goes out
+  label: string; // its line in the yearly breakdown
+  text: string; // the log line, followed by the amount
 }
 
 export interface Parents {
@@ -297,6 +318,8 @@ export interface LifeState {
   creditLockUntil: number;
   livingWithParents: boolean;
   flags: Record<string, number | string | boolean>;
+  recurring?: Recurring[];
+  dues?: Due[];
   answers: Record<string, string>;
   pending: Decision[];
   log: LogEntry[];

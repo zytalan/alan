@@ -11,7 +11,7 @@ import { deskValue } from "./markets";
 import { stream, type Rng } from "./rng";
 import {
   ASSET_KEYS, EDU_ORDER, type Allocation, type AssetKey, type BizType, type Edu, type LifeState, type Property,
-  type Stats, type Stock, type Tone,
+  type Due, type Recurring, type Stats, type Stock, type Tone,
 } from "./types";
 import { country, devLevel, nearest } from "./world";
 
@@ -67,6 +67,21 @@ export function addMove(s: LifeState, key: string, amount: number): void {
   if (!amount || !Number.isFinite(amount)) return;
   const m = (s.yr.moves ??= {});
   m[key] = (m[key] ?? 0) + amount;
+}
+
+/** Take on a yearly cost or income for some years (replacing one with the same key). */
+export function commit(s: LifeState, r: Recurring): void {
+  s.recurring = [...(s.recurring ?? []).filter((x) => x.key !== r.key), r];
+}
+
+/** Money that arrives or falls due in a later year. */
+export function addDue(s: LifeState, d: Due): void {
+  s.dues = [...(s.dues ?? []).filter((x) => x.key !== d.key), d];
+}
+
+/** The commitments running this year. */
+export function commitments(s: LifeState): Recurring[] {
+  return (s.recurring ?? []).filter((x) => x.until >= s.year && (!x.needsJob || (s.job && !s.retired)));
 }
 
 export function log(s: LifeState, text: string, tone: Tone = "neutral"): void {
@@ -473,7 +488,7 @@ export function homePrice(s: LifeState): number {
 }
 
 export function mortgageRate(s: LifeState): number {
-  return clamp(ec(s).lend + (dev(s) > 0.6 ? -0.01 : 0.01), 0.02, 0.6);
+  return clamp(ec(s).lend + (dev(s) > 0.6 ? -0.01 : 0.01) - (s.flags.goodCredit ? 0.005 : 0), 0.02, 0.6);
 }
 
 export function annuity(principal: number, rate: number, years: number): number {

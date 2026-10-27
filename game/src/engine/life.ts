@@ -13,7 +13,7 @@ import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
-  addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, consumerRate, creditLimit, dev, ec,
+  addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, commitments, consumerRate, creditLimit, dev, ec,
   endBusiness, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay,
   priceToIncome, propertyValue, raiseCash, rebalance, realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock,
   stockValue, totalDebt, usdPremium,
@@ -362,9 +362,11 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
 
   // ---- care for a frail parent: their savings pay first, then the state's share, then you and your siblings
   for (const i of [0, 1] as const) {
-    if (s.flags[`care${i}`] !== "home" || !s.parents.alive[i]) continue;
+    const mode = s.flags[`care${i}`];
+    if ((mode !== "home" && mode !== "together") || !s.parents.alive[i]) continue;
     const who = i === 0 ? "mother" : "father";
-    const cost = careCost(s);
+    // living with you, they need a carer only by day
+    const cost = careCost(s) * (mode === "together" ? 0.25 : 1);
     const fromParents = Math.min(cost, Math.max(0, s.parents.wealthMult * w));
     s.parents.wealthMult -= fromParents / w;
     const share = ((cost - fromParents) * (1 - careAid(s))) / (s.siblings + 1);
@@ -377,7 +379,35 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   if (s.flags.care0 === "self" || s.flags.care1 === "self") {
     bump(s, "happiness", -2);
     bump(s, "health", -1);
+  } else if (s.flags.care0 === "together" || s.flags.care1 === "together") bump(s, "happiness", -1);
+
+  // ---- money that falls due this year
+  for (const d of (s.dues ?? []).filter((x) => x.year <= s.year)) {
+    const amount = d.wage * w;
+    let moved = amount;
+    if (amount >= 0) invest(s, amount);
+    else moved = -(-amount - pay(s, -amount));
+    addMove(s, `ev:${d.label}`, moved);
+    log(s, `${d.text} ${fmt(s, Math.abs(moved))}.`, amount >= 0 ? "good" : "bad");
   }
+  if (s.dues?.length) s.dues = s.dues.filter((x) => x.year > s.year);
+
+  // ---- an adviser's yearly cut of what they manage
+  if (s.flags.adviser) {
+    const fee = 0.015 * (s.holdings.bonds + s.holdings.localEq + s.holdings.globalEq);
+    if (fee > 0) {
+      const k = fee / (s.holdings.bonds + s.holdings.localEq + s.holdings.globalEq);
+      for (const key of ["bonds", "localEq", "globalEq"] as const) s.holdings[key] *= 1 - k;
+      addMove(s, "ev:Your adviser's fees", -fee);
+    }
+  }
+
+  // ---- commitments: their yearly toll on body and mood, and dropping the ones that have run out
+  for (const x of commitments(s)) {
+    if (x.health) bump(s, "health", x.health);
+    if (x.happiness) bump(s, "happiness", x.happiness);
+  }
+  if (s.recurring?.length) s.recurring = s.recurring.filter((x) => x.until >= s.year);
 
   // ---- partner
   if (s.partner && s.age >= 40) {
@@ -433,7 +463,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       }
       s.holdings.crypto = 0;
       syncAllocation(s);
-    } else if (s.cryptoCustody === "self" && r.chance(0.01)) {
+    } else if (s.cryptoCustody === "self" && r.chance(s.flags.walletBackup ? 0.002 : 0.01)) {
       log(s, `You can't find your wallet's recovery phrase. ${fmt(s, s.holdings.crypto)} in bitcoin is locked away forever.`, "bad");
       addMove(s, "ev:A lost recovery phrase", -s.holdings.crypto);
       s.holdings.crypto = 0;
@@ -472,24 +502,35 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   }
 }
 
+// each event's flag names, built once rather than for every event every year
+const EVENT_KEYS = EVENTS.map((d) => ({ done: `done:${d.id}`, last: `last:${d.id}`, n: `n:${d.id}` }));
+const EVENT_ORDER = EVENTS.map((_, i) => i);
+
 function rollEvents(s: LifeState, e: YearEcon): void {
   const c: EventCtx = { e, prev: ec(s, s.year - 1), w: e.wage, r: stream(s.seed, "chance", s.year) };
   let random = 0;
-  for (const def of EVENTS) {
+  // one chance event a year, now and then two; career, family and health events always get their turn
+  const cap = stream(s.seed, "cap", s.year).next() < 0.35 ? 2 : 1;
+  // a fresh order each year, so no event crowds out the ones after it
+  for (const i of stream(s.seed, "order", s.year).shuffle(EVENT_ORDER)) {
+    const def = EVENTS[i];
     if (!def.chance) continue;
-    if (def.once && s.flags[`done:${def.id}`]) continue;
-    if (def.cooldown && s.year - Number(s.flags[`last:${def.id}`] ?? -999) < def.cooldown) continue;
-    if (!def.forced && random >= 2) continue;
+    if (!def.forced && !def.core && random >= cap) continue;
+    const k = EVENT_KEYS[i];
+    if (def.once && s.flags[k.done]) continue;
+    if (def.cooldown && s.year - Number(s.flags[k.last] ?? -999) < def.cooldown) continue;
     if (s.pending.some((d) => d.event === def.id)) continue;
-    const p = def.chance(s, c);
+    const seen = Number(s.flags[k.n] ?? 0);
+    const p = def.chance(s, c) * (def.repeats ?? 1) ** seen;
     if (!(p > 0)) continue;
     if (stream(s.seed, "ev", def.id, s.year).next() >= p) continue;
     const before = s.pending.length;
     enqueue(s, def.id);
     if (s.pending.length > before) {
-      s.flags[`last:${def.id}`] = s.year;
-      if (def.once) s.flags[`done:${def.id}`] = true;
-      if (!def.forced) random++;
+      s.flags[k.last] = s.year;
+      s.flags[k.n] = seen + 1;
+      if (def.once) s.flags[k.done] = true;
+      if (!def.forced && !def.core) random++;
     }
   }
 }
@@ -541,8 +582,9 @@ export function resolveYear(s: LifeState): void {
   } else {
     addMove(s, "bank", -applyDepositShock(s));
     // ---- income
-    const caring = s.flags.care0 === "self" || s.flags.care1 === "self";
-    const cut = Math.max(Number(s.flags.incomeCut ?? 0), caring ? 0.4 : 0);
+    const care = [s.flags.care0, s.flags.care1];
+    const caring = care.includes("self") ? 0.4 : care.includes("together") ? 0.15 : 0;
+    const cut = Math.max(Number(s.flags.incomeCut ?? 0), caring);
     let labor = s.job ? s.job.mult * w * (1 - cut) : 0;
     if (s.flags.hustleUntil && s.year <= Number(s.flags.hustleUntil)) labor += 0.15 * w;
     const partner = s.partner?.working ? s.partner.mult * w : 0;
@@ -569,7 +611,10 @@ export function resolveYear(s: LifeState): void {
       }
       if (!s.job) labor += 0.2 * w * (1 - famShare); // part-time work
     }
-    income = labor + partner + pension + benefit + rent + biz + support;
+    const running = commitments(s);
+    const fromCommitments = running.reduce((a, x) => a + Math.max(0, x.wage), 0) * w;
+    const toCommitments = running.reduce((a, x) => a + Math.max(0, -x.wage), 0) * w;
+    income = labor + partner + pension + benefit + rent + biz + support + fromCommitments;
     const taxable = labor + partner + pension + Math.max(0, biz) + rent * 0.8;
     const tax = taxable * incomeTaxRate(s, taxable);
     const disposable = income - tax;
@@ -579,9 +624,11 @@ export function resolveYear(s: LifeState): void {
     const hh = 1 + (s.partner ? 0.6 : 0) + 0.45 * kidsHome;
     const needs = 0.42 * w * hh * (s.livingWithParents ? 0.5 : 1);
     const home = s.properties.find((p) => p.kind === "home");
-    const housing = home ? 0.012 * home.value : s.livingWithParents ? 0 : e.rentYield * homePrice(s) * 0.6 * LIFESTYLE_RENT[s.lifestyle] * (1 + 0.25 * (hh - 1));
-    const insurance = s.flags.insured ? 0.03 * w : 0;
-    const supportParents = Number(s.flags.supportUntil ?? 0) >= s.year ? 0.08 * Math.max(0, disposable) : 0;
+    // sharing a flat halves the rent until you settle down; the big city costs more
+    const where = s.flags.housing === "shared" && !s.partner && s.age < 32 ? 0.55 : s.flags.housing === "city" ? 1.3 : 1;
+    const housing = home ? 0.012 * home.value : s.livingWithParents ? 0 : e.rentYield * homePrice(s) * 0.6 * LIFESTYLE_RENT[s.lifestyle] * (1 + 0.25 * (hh - 1)) * where;
+    const insurance = s.flags.insured ? 0.03 * w : s.flags.insuredBasic ? 0.012 * w : 0;
+    const supportParents = Number(s.flags.supportUntil ?? 0) >= s.year ? Number(s.flags.supportShare ?? 0.08) * Math.max(0, disposable) : 0;
     let debtService = 0;
     let interestPaid = 0;
     for (const p of s.properties) {
@@ -609,7 +656,7 @@ export function resolveYear(s: LifeState): void {
     // Fixed obligations come first; living costs adapt to what's left. Poor households
     // don't borrow to eat — they go without (deprivation). Credit only covers the gap
     // for people with a bank account.
-    const committed = insurance + supportParents + debtService + tuitionOwn;
+    const committed = insurance + supportParents + debtService + tuitionOwn + toCommitments;
     const decent = needs + housing;
     const subsistence = 0.15 * w * hh;
     let available = disposable - committed;

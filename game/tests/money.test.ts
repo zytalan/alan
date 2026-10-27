@@ -63,7 +63,7 @@ describe("what moved your money", () => {
         const scale = Math.max(1, Math.abs(rec.netWorth), Math.abs(prev.netWorth));
         expect(Math.abs(sum - (rec.netWorth - prev.netWorth)) / scale).toBeLessThan(1e-9);
         // what you kept from income is pay left after tax and costs, less interest
-        if (rec.saved !== 0) expect((rec.moves.pay ?? 0) + (rec.moves.interest ?? 0)).toBeCloseTo(rec.saved, 6);
+        if (rec.saved !== 0) expect(Math.abs((rec.moves.pay ?? 0) + (rec.moves.interest ?? 0) - rec.saved) / scale).toBeLessThan(1e-9);
         const w = Object.values(rec.moves).reduce((a, x) => a + Math.abs(x), 0);
         gross += w / scale;
         other += Math.abs(rec.moves.other ?? 0) / scale;

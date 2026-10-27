@@ -39,7 +39,7 @@ export const typical: Chooser = (s, d) => {
     case "reflect70":
       return ok[Math.floor(r * ok.length)] ?? ok[0];
     case "no_school":
-      return "work";
+      return r < 0.3 ? "trade" : "work";
     case "pocket_money":
       return r < 0.5 ? "spend" : "save";
     case "stay_in_school":
@@ -57,13 +57,13 @@ export const typical: Chooser = (s, d) => {
     case "first_job":
       return prefer(d, "o0");
     case "job_offer":
-      return "take";
+      return r < 0.12 ? "counter" : "take";
     case "layoff":
       return "quick";
     case "promotion":
       return "yes";
     case "side_hustle":
-      return r < 0.3 ? "yes" : "no";
+      return r < 0.3 ? (ok.find((id) => id !== "no") ?? "no") : "no";
     case "burnout":
       return "push";
     case "retire":
@@ -73,7 +73,7 @@ export const typical: Chooser = (s, d) => {
       if ((region === "SAS" || region === "MEA") && r < 0.5) return "gold";
       return "bank";
     case "crash_reaction":
-      return r < 0.35 ? "sell" : "hold";
+      return r < 0.25 ? "sell" : r < 0.4 ? "half" : "hold";
     case "bubble":
       return d.payload.asset === "localEq" && r < 0.05 ? "allin" : "steady";
     case "stock_tip":
@@ -111,8 +111,97 @@ export const typical: Chooser = (s, d) => {
       return dev(s) >= 0.6 ? "buy" : "no";
     case "parents_support":
       return "yes";
+    case "teen_gadget":
+      return r < 0.4 ? "ask" : r < 0.7 ? "save" : "used";
+    case "teen_job":
+      return r < 0.4 ? "spend" : r < 0.6 ? "work" : r < 0.8 ? "sport" : "study";
+    case "exam_year":
+      return s.familyPct > 0.7 && r < 0.4 ? prefer(d, "tutor", "group") : r < 0.4 ? "group" : r < 0.7 ? "alone" : "coast";
+    case "moving_out":
+      return r < 0.35 ? "share" : r < 0.6 ? "own" : r < 0.75 ? "city" : "stay";
+    case "first_car":
+      return dev(s) >= 0.75 ? (r < 0.4 ? "new" : r < 0.8 ? prefer(d, "used", "transit") : "transit") : r < 0.5 ? prefer(d, "bike", "used", "transit") : "transit";
+    case "credit_card":
+      return r < 0.5 ? "full" : r < 0.8 ? "spend" : "no";
+    case "night_school":
+      return r < 0.25 ? "enrol" : r < 0.5 ? "cheap" : "skip";
+    case "big_trip":
+      return r < 0.35 ? "go" : r < 0.6 ? "cheap" : "save";
+    case "pet":
+      return r < 0.35 ? "adopt" : "no";
+    case "cosign":
+      return r < 0.25 ? "sign" : r < 0.5 ? "lend" : "no";
+    case "raise_ask":
+      return r < 0.15 ? "big" : r < 0.5 ? "small" : "no";
+    case "overtime":
+      return r < 0.3 ? "all" : r < 0.7 ? "some" : "none";
+    case "strike":
+      return r < 0.6 ? "join" : "cross";
+    case "credit_thief":
+      return r < 0.5 ? "let" : r < 0.7 ? "confront" : r < 0.85 ? "leave" : prefer(d, "above", "let");
+    case "transfer":
+      return r < 0.25 ? "move" : r < 0.35 ? "commute" : "stay";
+    case "pension_match":
+      return r < 0.5 ? "max" : r < 0.8 ? "some" : "none";
+    case "retrain":
+      return r < 0.08 ? "course" : r < 0.25 ? "night" : "stay";
+    case "startup_offer":
+      return r < 0.2 ? "join" : r < 0.35 ? "advise" : "stay";
+    case "gig_work":
+      return r < 0.3 ? "evenings" : r < 0.55 ? "weekends" : "no";
+    case "windfall":
+      return r < 0.35 ? "invest" : r < 0.55 ? prefer(d, "debt", "invest") : r < 0.85 ? "treat" : "share";
+    case "refinance":
+      return r < 0.7 ? "refi" : r < 0.8 ? "cashout" : "keep";
+    case "adviser":
+      return r < 0.35 ? "hand" : r < 0.45 ? prefer(d, "index", "no") : "no";
+    case "fixer_upper":
+      return r < 0.1 ? prefer(d, "flip", "pass") : r < 0.2 ? prefer(d, "rent", "pass") : "pass";
+    case "savings_circle":
+      return r < 0.45 ? "join" : r < 0.6 ? prefer(d, "first", "join") : "no";
+    case "microloan":
+      return r < 0.3 ? "invest" : r < 0.45 ? "family" : "no";
+    case "farmland":
+      return r < 0.3 ? prefer(d, "land", "animals", "no") : r < 0.55 ? prefer(d, "animals", "no") : "no";
+    case "remit":
+      return r < 0.45 ? "monthly" : r < 0.8 ? "lump" : "no";
+    case "charity":
+      return r < 0.15 ? "big" : r < 0.5 ? "small" : r < 0.65 ? "time" : "no";
+    case "holiday_home":
+      return r < 0.15 ? prefer(d, "keep", "no") : r < 0.3 ? prefer(d, "let", "no") : "no";
+    case "annuity_offer":
+      return r < 0.15 ? "buy" : r < 0.3 ? "some" : "keep";
+    case "downsize":
+      return r < 0.3 ? "down" : r < 0.45 ? "room" : "stay";
+    case "school_choice":
+      return r < 0.15 ? "private" : r < 0.35 ? "area" : "local";
+    case "kid_hobby":
+      return r < 0.5 ? "pay" : r < 0.8 ? "cheap" : "no";
+    case "boomerang":
+      return r < 0.6 ? "yes" : r < 0.85 ? "rent" : "no";
+    case "fitness":
+      return r < 0.3 ? "gym" : r < 0.6 ? "run" : r < 0.65 ? "trainer" : "later";
+    case "smoking":
+      return r < (s.year < 1990 ? 0.4 : 0.15) ? "start" : r < 0.6 ? "parties" : "no";
+    case "quit_smoking":
+      return r < 0.35 ? "quit" : r < 0.6 ? "patches" : "keep";
+    case "checkup":
+      return r < 0.4 ? "full" : r < 0.7 ? "basic" : "skip";
+    case "romance_scam":
+      return r < 0.08 ? "send" : r < 0.4 ? "video" : "block";
+    case "british_gas":
+      return r < 0.5 ? "small" : r < 0.65 ? "big" : "pass";
+    case "vouchers":
+      return r < 0.6 ? "sell" : r < 0.85 ? "fund" : "shares";
+    case "house_boom":
+      return r < 0.15 ? prefer(d, "buy", "stay") : r < 0.2 ? prefer(d, "sell", "stay") : "stay";
+    case "lockdown":
+      return r < 0.5 ? "home" : r < 0.7 ? "deliver" : r < 0.85 ? "learn" : "wait";
     case "parent_care":
-      return dev(s) >= 0.75 && r < 0.6 ? "home" : dev(s) >= 0.45 && r < 0.3 ? "home" : r < 0.2 ? prefer(d, "siblings", "self") : "self";
+      // care homes in rich countries; in most of the world, parents move in with their children
+      if (dev(s) >= 0.75) return r < 0.55 ? "home" : r < 0.8 ? "together" : r < 0.9 ? prefer(d, "siblings", "self") : "self";
+      if (dev(s) >= 0.45) return r < 0.25 ? "home" : r < 0.7 ? "together" : r < 0.85 ? prefer(d, "siblings", "self") : "self";
+      return r < 0.6 ? "together" : r < 0.8 ? prefer(d, "siblings", "self") : "self";
     case "kid_deposit":
       return r < 0.5 ? "half" : "no";
     case "sibling_loan":
@@ -122,17 +211,17 @@ export const typical: Chooser = (s, d) => {
     case "migration":
       return r < 0.2 ? "go" : "stay";
     case "war":
-      return r < 0.4 ? prefer(d, "flee", "stay") : "stay";
+      return r < 0.35 ? prefer(d, "flee", "rural") : r < 0.6 ? "rural" : "stay";
     case "disaster":
       return "fix";
     case "midlife":
       return "nothing";
     case "scam_call":
-      return r < 0.15 ? "follow" : "hang";
+      return r < 0.15 ? "follow" : r < 0.3 ? "check" : "hang";
     case "start_business":
       return "none";
     case "biz_expand":
-      return "no";
+      return r < 0.25 ? "slow" : "no";
     case "biz_offer":
       return "sell";
     case "biz_crisis":
@@ -177,6 +266,19 @@ export const steady: Chooser = (s, d) => {
     case "crypto_discovery":
     case "crypto_later":
       return "no";
+    case "credit_card":
+      return "full";
+    case "pension_match":
+      return "max";
+    case "windfall":
+      return prefer(d, "debt", "invest");
+    case "adviser":
+      return prefer(d, "index", "no");
+    case "cosign":
+    case "smoking":
+      return "no";
+    case "romance_scam":
+      return "block";
     default:
       return typical(s, d);
   }

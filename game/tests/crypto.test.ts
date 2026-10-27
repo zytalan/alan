@@ -4,6 +4,7 @@ import {
   buy, cryptoFee, deposit, deskAccess, ensureDesk, quote, quoteBuy, sell, setCustody, spreadOf, stepMonth, tradable, WALLET_FEE,
 } from "../src/engine/desk";
 import { syncAllocation } from "../src/engine/events";
+import { W } from "../src/engine/ops";
 import { econ } from "../src/engine/macro";
 import { coinUsd, setMarkets, tOf, type MarketsData } from "../src/engine/markets";
 import { newGame, runLife, typical } from "../src/engine/policy";
@@ -150,7 +151,7 @@ describe("crypto in savings", () => {
       const s = newGame({ mode: "random", seed, country: "USA", birthYear: 1975 });
       runLife(s, typical, (t) => t.year >= 2013);
       if (s.country !== "USA" || !s.alive) continue;
-      s.holdings.crypto += 1000;
+      s.holdings.crypto += 5 * W(s); // enough that a year's bills don't eat it
       s.cryptoCustody = "exchange";
       syncAllocation(s);
       runLife(s, typical, (t) => t.year >= 2025);
