@@ -359,6 +359,7 @@ body::before {
 .entry.history::before { background: transparent; border: 1px solid var(--muted); }
 .bal { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; white-space: nowrap; }
 .bal.neg { color: var(--stamp); }
+.kv .neg { color: var(--stamp); }
 .ledger-empty { padding: 24px 16px; color: var(--muted); }
 
 .side { display: grid; gap: 16px; }

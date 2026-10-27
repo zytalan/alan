@@ -23,7 +23,7 @@ how much was you.
 
 ## Decisions
 
-An adult life meets about 55 decisions, drawn from 112 kinds, and almost all have three
+An adult life meets about 60 decisions, drawn from 115 kinds, and almost all have three
 or four ways to answer. Some arrive on cue: what you do after school, a first job, where
 your first savings go, looking back at 30, 50 and 70. The rest come by chance. The order
 is shuffled every year so no event crowds out the others. Career, family and health
@@ -34,12 +34,14 @@ likely than the first).
 A decision that comes back asks something new. The first promotion is a raise; the next
 is a senior role you can take on your terms or swap for training; then your boss leaves
 and a colleague you like wants the job too; then the top job, which you can share or turn
-down to train the next one. A manager's job can be led while you keep doing the work, and
+down to train the next one. Each step names the next rung of your own job's ladder, and
 an executive can take part of the salary in shares that pay out if the company is ever
 bought. An illness you skipped or treated on the cheap can come back worse; an injury
 offers surgery or rest, a chronic disease medication for good, a grave one the choice to
-spend the money on living instead. A second layoff offers a safer job or early retirement,
-a third a move to where the jobs are. A second baby raises space and childcare, and a
+spend the money on living instead. A layoff while your industry is shedding jobs says
+nobody in it is hiring, and offers work outside your field, waiting it out, retraining or
+freelancing. A second layoff offers a safer job or early retirement, a third a move to
+where the jobs are. A second baby raises space and childcare, and a
 younger child's university is measured against what the older one got. A second debt
 crisis can't end in another bankruptcy within eight years, love after a marriage ends can
 come with a prenup, and crashes and booms remember what you did last time.
@@ -66,6 +68,40 @@ Some decisions belong to a place and a time: a savings circle under its local na
 susu in Ghana, a chama in Kenya, a tanda in Mexico, an arisan in Indonesia, a hui in
 China), British Gas shares in 1986, Russia's privatisation vouchers in 1992–93, the
 housing booms of 2004–06 in the US, Spain, Ireland and Britain, and the 2020 lockdowns.
+
+## Careers
+
+At university you pick one of seven majors: computer science, engineering, business and
+finance, medicine, law, education, or arts and humanities. The choice shows only what a
+student could know that year: how long the degree takes, what new graduates earn, and how
+fast that industry has been hiring over the last three years. Computer science is taught
+from 1970 in richer countries, 1985 in middle-income ones and 1995 in the poorest, and
+some majors need a minimum skill (medicine 62, law 52, computer science and engineering 45).
+
+There are 37 jobs in 15 industries. Most graduates start in the work their major trains
+them for (software for computer science; engineering, civil engineering or oil and gas for
+engineering; accounting, analysis or banking for business), some in work it only
+qualifies them for. Jobs come and go with their era: web developers from 1995, data
+scientists from 2012, fewer typists after the 1980s and fewer bank tellers after 2008.
+Salaried jobs have a five-rung ladder (junior developer, developer, senior, lead, head of
+engineering) that promotions climb, and a few at the top move on to an executive job. Years in the same industry count fully toward pay
+and the rung you're hired at; years elsewhere count half, so changing field costs something.
+
+Every industry in every country has a real yearly change in its number of jobs: the US
+Bureau of Labor Statistics' employment by industry since 1940, and the ILO's estimates for
+every country since 1991. Before 1991, industries that move worldwide (tech, finance, oil,
+factories) follow the US and the rest follow the country's own economy, plus shocks the
+economy doesn't show, such as Britain's pit closures and Latin America's debt crisis. After
+2025 they are simulated. That number decides how many offers come, how fast pay rises,
+who is laid off (the newest hires first) and which decisions arrive: a bidding war for you
+in a boom; a hiring freeze, pay cut or buyout in a bust; and a dying trade when your job is
+fading.
+
+Checked against history: US software developers hired in 1999 were laid off in 2001–03
+about twice as often (23%) as those hired in 1993 over 1995–97 (11%); Spanish civil
+engineers 59% in 2008–12 against 18% in 2002–06; US nurses 4% through 2008–10. At 40, a US
+graduate born in 1975 earns, in typical wages: medicine 4.9, computer science 4.5, law
+3.8, engineering 3.5, business 3.3, education 2.2, arts 1.9.
 
 ## The trading desk
 
@@ -192,6 +228,10 @@ Rebuilding the data needs Python 3 with `pandas`, `xlrd` and `babel`:
 npm run data       # downloads raw sources to pipeline/raw/, writes public/data/world.json
 ```
 
+The US jobs-by-industry series come through FRED's API, which needs a free key: set
+`FRED_API_KEY` first, or save each series' CSV from its FRED page into `pipeline/raw/` as
+`fred_<name>.csv` (`fetch.py` prints the names it is missing).
+
 ## Data
 
 | Source | Used for | License |
@@ -206,6 +246,8 @@ npm run data       # downloads raw sources to pipeline/raw/, writes public/data/
 | OECD Financial Market statistics, monthly | share price indices for 45 countries, for the trading desk | OECD terms, attribution |
 | Robert J. Shiller, Irrational Exuberance data | monthly S&P 500 prices and dividends since 1871 | free, cite Shiller |
 | Kenneth R. French Data Library | monthly returns of 49 US industry portfolios since 1926 | free, cite the library |
+| US Bureau of Labor Statistics, Current Employment Statistics, via FRED | US jobs by industry since 1939 | public domain |
+| ILO modelled estimates (ILOSTAT), employment by economic activity | jobs by industry for every country, 1991–2025 | CC BY 4.0 |
 | Natural Earth 1:110m, via world-atlas | land and country shapes for the birth lottery map (`npm run geo` writes `src/ui/geo.ts`) | public domain |
 
 `src/engine/history.ts` adds what the datasets don't carry: headline events, deposit

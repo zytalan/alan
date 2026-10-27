@@ -10,8 +10,9 @@ export { buildReport, toToday, lifetimeWealth, type Report } from "./report";
 export { memories, type Memory } from "./memories";
 export {
   availableAssets, consumerRate, dev, ec, fmt, homePrice, liquid, mortgageQuote, netWorth, propertyValue, salary,
-  stockValue, totalDebt, W, stageName, retirementAge, creditLimit, localUnitsReadable, fmtIn, wageYears,
+  stockValue, totalDebt, W, stageName, retirementAge, creditLimit, localUnitsReadable, fmtIn, wageYears, jobIndustry,
 } from "./ops";
+export { industryGrowth, INDUSTRY_NAMES, type Industry } from "./labour";
 export { money, usd, pct, signedPct, oneIn, topPercent, ordinal } from "./format";
 export { FIELD_NAMES, OCC } from "./content/occupations";
 export { BIZ } from "./content/business";

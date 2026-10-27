@@ -1,8 +1,10 @@
+import type { Industry } from "./labour";
+
 export type Sex = "M" | "F";
 export type Mode = "random" | "timetravel";
 export type Era = "past" | "recent" | "now" | "any";
 export type Edu = "none" | "primary" | "secondary" | "vocational" | "bachelor" | "master" | "doctorate";
-export type Field = "stem" | "business" | "medicine" | "law" | "education" | "arts" | "general";
+export type Field = "cs" | "stem" | "business" | "medicine" | "law" | "education" | "arts" | "general";
 export type Lifestyle = "frugal" | "modest" | "comfortable" | "lavish";
 export type AssetKey = "cash" | "usd" | "bonds" | "localEq" | "globalEq" | "gold" | "crypto";
 export type Allocation = Record<AssetKey, number>;
@@ -38,6 +40,7 @@ export interface Job {
   years: number;
   level: number; // promotions
   formal: boolean;
+  industry?: Industry; // where the job is: a manager stays in the industry they rose in
 }
 
 export interface Stock {
@@ -328,6 +331,7 @@ export interface LifeState {
   recurring?: Recurring[];
   dues?: Due[];
   followUps?: FollowUp[];
+  indYears?: Partial<Record<Industry, number>>; // years worked in each industry
   answers: Record<string, string>;
   pending: Decision[];
   log: LogEntry[];

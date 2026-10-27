@@ -3,9 +3,10 @@
 // these so the rules live in one place.
 
 import { BIZ, STOCK_IDEAS, TECH_STAGES } from "./content/business";
-import { OCC, OCCUPATIONS, type Occupation } from "./content/occupations";
+import { OCC, OCCUPATIONS, titleAt, type Occupation } from "./content/occupations";
 import { money, usd } from "./format";
 import { capitalControl, cryptoBan, goldRule } from "./history";
+import { industryGrowth, recentGrowth, type Industry } from "./labour";
 import { econ, intlToUsd, toIntl2021, type YearEcon } from "./macro";
 import { deskValue } from "./markets";
 import { stream, type Rng } from "./rng";
@@ -365,6 +366,8 @@ export interface Offer {
   title: string;
   mult: number;
   employer: string;
+  level?: number; // the rung you'd start on
+  industry?: Industry; // when it isn't the job's usual one: a manager moving within their industry
 }
 
 const JOB_EMPLOYERS: Record<string, string[]> = {
@@ -380,6 +383,24 @@ const JOB_EMPLOYERS: Record<string, string[]> = {
   software: ["a tech company", "a bank's IT team", "a startup"],
   finance: ["a big bank", "an investment firm"],
   trades: ["an electrical contractor", "a repair shop", "a utility company"],
+  miner: ["a coal mine", "a copper mine", "a gold mine"],
+  cook: ["a hotel kitchen", "a busy restaurant", "a canteen"],
+  typist: ["an insurance office", "a law firm", "a government office"],
+  teller: ["a big bank", "a savings bank", "a credit union"],
+  clerk: ["an insurance office", "a shipping company", "the city government"],
+  sales: ["a car dealer", "a drug company", "a software firm"],
+  itsupport: ["a hospital IT team", "a tech support firm", "a school district"],
+  designer: ["an advertising agency", "a design studio", "a publisher"],
+  journalist: ["a newspaper", "a TV station", "a news agency"],
+  accountant: ["an accounting firm", "a manufacturer's finance team", "the tax office"],
+  analyst: ["an investment firm", "a big bank", "an insurer"],
+  engineer: ["an engineering group", "a car maker", "a power company"],
+  civileng: ["a construction group", "the roads department", "an engineering consultancy"],
+  oileng: ["an oil company", "a drilling contractor", "the national oil company"],
+  webdev: ["a web agency", "an online shop", "a media company"],
+  datasci: ["a tech company", "a bank's data team", "an online retailer"],
+  civil: ["the ministry", "the city government", "the tax office"],
+  professor: ["the national university", "a private university"],
 };
 
 const EMPLOYERS: Record<Occupation["pool"], string[]> = {
@@ -415,27 +436,84 @@ function poolWeight(s: LifeState, o: Occupation): number {
   }
 }
 
+/** How likely an offer is to be for this job: how common the work is here, whether its industry is hiring, and whether it's what you studied. */
+function offerWeight(s: LifeState, o: Occupation): number {
+  let w = poolWeight(s, o) * (o.common ?? 1) * (o.pay >= 1 ? 1 + s.stats.network / 100 : 1);
+  // an industry taking on workers makes offers; one shedding them hardly does
+  w *= clamp(1 + 3 * industryGrowth(s.country, s.year, o.industry, s.macroSeed), 0.25, 2);
+  // most graduates start in the work their degree trains them for; some in work it often leads to
+  if (s.field && o.home === s.field) w *= 6;
+  else if (s.field && o.prefers?.includes(s.field)) w *= 1.5;
+  // graduates in richer countries are rarely offered unskilled work
+  if (eduAtLeast(s.edu, "bachelor") && !eduAtLeast(o.minEdu, "vocational")) w *= dev(s) >= 0.6 ? 0.3 : 0.6;
+  // getting in without the degree happens, but rarely
+  if (!eduAtLeast(s.edu, o.minEdu) || (o.fields && !fieldOk(s, o))) w *= 0.12;
+  if (o.fades && s.year > o.fades) w *= Math.max(0.05, 1 - 0.12 * (s.year - o.fades));
+  return w;
+}
+
+/** Whether your training is the kind this job asks for. */
+function fieldOk(s: LifeState, o: Occupation): boolean {
+  if (o.vocationalOk && s.edu === "vocational") return true;
+  return !!s.field && !!o.fields?.includes(s.field);
+}
+
+/** Where someone in this job might work. */
+export function employerFor(occ: string, r: Rng): string {
+  return r.pick(JOB_EMPLOYERS[occ] ?? EMPLOYERS[OCC[occ].pool]);
+}
+
+/** The industry your job is in. */
+export function jobIndustry(s: LifeState): Industry {
+  return s.job?.industry ?? OCC[s.job?.occ ?? "clerk"].industry;
+}
+
+/** Experience that counts in an industry: every year in it, and half of the years spent elsewhere. */
+export function fieldExp(s: LifeState, ind: Industry): number {
+  const own = s.indYears?.[ind] ?? 0;
+  return own + 0.5 * Math.max(0, s.workYears - own);
+}
+
 export function occEligible(s: LifeState, o: Occupation): boolean {
   const d = dev(s);
   if (o.from && s.year < o.from) return false;
+  if (o.onlyIn && !o.onlyIn.includes(s.country)) return false;
   if (o.minDev != null && d < o.minDev) return false;
   if (o.maxDev != null && d > o.maxDev) return false;
   if (s.stats.skill < o.skill) return false;
-  const selfTaught = o.id === "software" && s.year >= 1995 && s.stats.skill >= 75 && eduAtLeast(s.edu, "secondary");
+  const selfTaught = o.selfTaught != null && s.year >= o.selfTaught.from && s.stats.skill >= o.selfTaught.skill && eduAtLeast(s.edu, "secondary");
   if (!eduAtLeast(s.edu, o.minEdu) && !selfTaught) return false;
-  if (o.fields && !selfTaught && (!s.field || !o.fields.includes(s.field))) return false;
+  if (o.fields && !selfTaught && !fieldOk(s, o)) return false;
   if (o.minExp && s.formalYears < o.minExp) return false;
   if (o.needs && !(s.flags.pastJobs as string | undefined)?.split(",").some((j) => o.needs!.includes(j))) return false;
   return true;
 }
 
-export function payMultiple(s: LifeState, o: Occupation, r: Rng, exp = s.workYears): number {
+/** A job's pay for this much experience, before luck. `upTo` is the first year whose hiring isn't counted yet. */
+function basePay(s: LifeState, o: Occupation, exp: number, upTo: number): number {
   const d = dev(s);
   // skilled work pays a bigger premium where skills are scarce
   const premium = o.pay > 1 ? 1 + (o.pay - 1) * (1 + 0.6 * (1 - d)) : o.pay;
   // `pay` is the mid-career level: juniors start below it, veterans end above it
   let mult = premium * (1 + o.growth) ** (Math.min(exp, o.peak) - o.peak / 2);
-  if (o.id === "software" && d >= 0.8 && s.year >= 1995) mult *= 1.35;
+  if (o.id === "software" && d >= 0.8 && s.year >= 1995) mult *= 1.2;
+  // an industry that has been hiring hard pays more to get people; one that has been shedding them pays less
+  return mult * (1 + clamp(0.8 * recentGrowth(s.country, upTo, o.industry, s.macroSeed, 3), -0.1, 0.15));
+}
+
+/** The most a job pays at the top of its ladder here. */
+export function payCeiling(s: LifeState, o: Occupation): number {
+  const premium = o.pay > 1 ? 1 + (o.pay - 1) * (1 + 0.6 * (1 - dev(s))) : o.pay;
+  return premium * (1 + o.growth) ** o.peak * 1.35;
+}
+
+/** What someone starting out in this job is paid now: what a student could see when choosing a major. */
+export function startingPay(s: LifeState, o: Occupation): number {
+  return basePay(s, o, 1, s.year);
+}
+
+export function payMultiple(s: LifeState, o: Occupation, r: Rng, exp = fieldExp(s, o.industry)): number {
+  let mult = basePay(s, o, exp, s.year + 1);
   mult *= Math.exp(r.normal(-(o.spread ** 2) / 2, o.spread)) * (0.85 + s.stats.skill / 400);
   return Math.max(0.15, mult);
 }
@@ -446,12 +524,15 @@ export function makeOffers(s: LifeState, r: Rng, n: number, minMult = 0): Offer[
   const offers: Offer[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < n * 4 && offers.length < n; i++) {
-    const o = r.weighted(pool, (x) => poolWeight(s, x) * (x.pay >= 1 ? 1 + s.stats.network / 100 : 1));
+    const o = r.weighted(pool, (x) => offerWeight(s, x));
     if (seen.has(o.id) && pool.length > n) continue;
     seen.add(o.id);
     const mult = payMultiple(s, o, r);
     if (mult < minMult && i < n * 3) continue;
-    offers.push({ occ: o.id, title: o.title, mult, employer: r.pick(JOB_EMPLOYERS[o.id] ?? EMPLOYERS[o.pool]) });
+    // experienced people come in a rung or two up
+    const exp = fieldExp(s, o.industry);
+    const level = o.formal && o.ladder ? (exp >= 9 ? 2 : exp >= 4 ? 1 : 0) : 0;
+    offers.push({ occ: o.id, title: titleAt(o, level), mult, employer: r.pick(JOB_EMPLOYERS[o.id] ?? EMPLOYERS[o.pool]), level });
   }
   return offers.sort((a, b) => b.mult - a.mult);
 }
@@ -459,7 +540,7 @@ export function makeOffers(s: LifeState, r: Rng, n: number, minMult = 0): Offer[
 export function takeJob(s: LifeState, offer: Offer): void {
   const o = OCC[offer.occ];
   if (s.job && s.job.occ !== offer.occ) s.counters.jobChanges++;
-  s.job = { occ: o.id, title: o.title, mult: offer.mult, years: 0, level: 0, formal: o.formal };
+  s.job = { occ: o.id, title: offer.title, mult: offer.mult, years: 0, level: offer.level ?? 0, formal: o.formal, industry: offer.industry ?? o.industry };
   s.unemployedYears = 0;
   s.retired = false;
   const past = new Set(String(s.flags.pastJobs ?? "").split(",").filter(Boolean));

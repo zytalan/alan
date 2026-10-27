@@ -14,6 +14,8 @@ Sources
 - Kenneth French Data Library: monthly returns of 49 US industry portfolios since 1926
 - Kraken public market data: weekly prices of six more coins, each from its first week on Kraken
 - World Bank commodity prices (the Pink Sheet): monthly gold and silver since 1960
+- BLS Current Employment Statistics via FRED: US jobs by industry, monthly since 1939 (1990 for the detailed ones)
+- ILO modelled estimates (ILOSTAT SDMX): jobs by industry (ISIC sections) in every country since 1991
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import json
+import os
 import re
 import time
 import urllib.request
@@ -86,6 +89,32 @@ SHILLER_FALLBACK = (
 KRAKEN_PAIRS = {"ltc": "LTCUSD", "eth": "ETHUSD", "xrp": "XRPUSD", "doge": "XDGUSD", "sol": "SOLUSD", "luna": "LUNAUSD"}
 for key, pair in KRAKEN_PAIRS.items():
     URLS[f"kraken_{key}.json"] = f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval=10080"
+# US employment by industry, thousands of jobs, seasonally adjusted (BLS Current Employment Statistics)
+FRED_SERIES = {
+    "total": "PAYEMS",
+    "tech": "CES6054150001",  # computer systems design and related services, from 1990
+    "info": "USINFO",
+    "finance": "USFIRE",
+    "manufacturing": "MANEMP",
+    "construction": "USCONS",
+    "mining": "USMINE",
+    "health": "CES6562000101",  # health care, from 1990
+    "eduhealth": "USEHS",
+    "education": "CES9093161101",  # local government education, from 1955
+    "public": "USGOVT",
+    "retail": "USTRADE",
+    "hospitality": "USLAH",
+    "transport": "CES4300000001",  # transportation and warehousing, from 1972
+    "tpu": "USTPU",
+    "business": "USPBS",
+}
+# every country's employment by ISIC section, ILO modelled estimates
+ILO_SECTIONS = ["TOTAL", "A", "B", "C", "DE", "F", "G", "HJ", "I", "K", "LMN", "O", "P", "Q", "RSTU"]
+URLS["ilo_emp_by_industry.csv"] = (
+    "https://sdmx.ilo.org/rest/data/ILO,DF_EMP_2EMP_SEX_ECO_NB,1.0/.A..SEX_T."
+    + "+".join(f"ECO_ISIC4_{x}" for x in ILO_SECTIONS)
+    + "?startPeriod=1991&format=csv"
+)
 for key, code in WB_INDICATORS.items():
     URLS[f"wb_{key}.json"] = (
         f"https://api.worldbank.org/v2/country/all/indicator/{code}"
@@ -145,6 +174,26 @@ def download(name: str, url: str, force: bool) -> str:
     raise RuntimeError(f"{name}: {last_err}")
 
 
+def fetch_fred(force: bool) -> None:
+    """FRED serves scripted downloads through its API, which needs a free key (FRED_API_KEY).
+    Without one, save each series' CSV from its FRED page into pipeline/raw/ as fred_<key>.csv."""
+    key = os.environ.get("FRED_API_KEY")
+    for name, sid in FRED_SERIES.items():
+        dest = RAW / f"fred_{name}.csv"
+        if dest.exists() and dest.stat().st_size > 0 and not force:
+            print(f"cached  {dest.name}")
+            continue
+        if not key:
+            print(f"MISSING {dest.name}: set FRED_API_KEY, or save https://fred.stlouisfed.org/series/{sid} as CSV there")
+            continue
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id={sid}&api_key={key}&file_type=json"
+        with urllib.request.urlopen(url, timeout=120) as resp:
+            obs = json.loads(resp.read())["observations"]
+        rows = [f"{o['date']},{o['value']}" for o in obs if o["value"] != "."]
+        dest.write_text("\n".join([f"observation_date,{sid}", *rows]) + "\n")
+        print(f"fetched {dest.name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--force", action="store_true", help="re-download cached files")
@@ -159,6 +208,7 @@ def main() -> None:
             except Exception as err:
                 failed.append(futures[fut])
                 print(f"FAILED  {err}")
+    fetch_fred(args.force)
     if failed:
         raise SystemExit(f"{len(failed)} downloads failed: {', '.join(sorted(failed))}")
 

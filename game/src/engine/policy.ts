@@ -31,9 +31,16 @@ export const typical: Chooser = (s, d) => {
   const ok = enabled(d);
   const region = country(s.country).r;
   switch (d.event) {
+    case "choose_field": {
+      // roughly how students split across majors
+      const share: Record<string, number> = { business: 0.25, stem: 0.17, arts: 0.17, education: 0.14, cs: 0.12, medicine: 0.08, law: 0.07 };
+      const total = ok.reduce((a, id) => a + (share[id] ?? 0.1), 0);
+      let x = r * total;
+      for (const id of ok) if ((x -= share[id] ?? 0.1) < 0) return id;
+      return ok[0];
+    }
     case "temperament":
     case "school_focus":
-    case "choose_field":
     case "reflect30":
     case "reflect50":
     case "reflect70":
@@ -60,6 +67,7 @@ export const typical: Chooser = (s, d) => {
       if (r < 0.12) return "counter";
       return r < 0.3 ? prefer(d, "bonus", "remote", "take") : "take";
     case "layoff":
+      if (ok.includes("outside")) return r < 0.5 ? "outside" : r < 0.75 ? "wait" : r < 0.9 ? prefer(d, "study", "freelance") : "freelance";
       if (ok.includes("safe") && r < 0.3) return "safe";
       if (ok.includes("early") && r < 0.5) return "early";
       if (ok.includes("move") && r > 0.85) return "move";
@@ -73,7 +81,7 @@ export const typical: Chooser = (s, d) => {
         case 3:
           return r < 0.5 ? "run" : r < 0.8 ? "share" : "mentor";
         default:
-          return ok.includes("coach") && r < 0.2 ? "coach" : ok.includes("equity") && r < 0.2 ? "equity" : "yes";
+          return ok.includes("equity") && r < 0.2 ? "equity" : "yes";
       }
     case "side_hustle":
       return r < 0.3 ? (ok.find((id) => id !== "no") ?? "no") : "no";
@@ -265,6 +273,12 @@ export const typical: Chooser = (s, d) => {
       return r < 0.35 ? "move" : r < 0.6 ? "back" : r < 0.8 ? prefer(d, "remote", "keep") : "keep";
     case "new_field":
       return r < 0.35 ? "switch" : r < 0.6 ? "inside" : r < 0.8 ? "side" : "stay";
+    case "industry_trouble":
+      return r < 0.6 ? "stay" : r < 0.75 ? "steady" : r < 0.9 ? "retrain" : "package";
+    case "bidding_war":
+      return r < 0.4 ? "jump" : r < 0.75 ? "raise" : r < 0.85 ? "startup" : "loyal";
+    case "dying_trade":
+      return r < 0.3 ? prefer(d, "retrain", "move", "hang") : r < 0.7 ? prefer(d, "move", "hang") : r < 0.9 ? "hang" : prefer(d, "early", "hang");
     case "childcare":
       if (dev(s) < 0.5) return prefer(d, "grand", "partner");
       return r < 0.35 ? "paid" : r < 0.6 ? "partner" : r < 0.85 ? prefer(d, "grand", "paid") : prefer(d, "you", "paid");

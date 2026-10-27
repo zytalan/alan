@@ -238,11 +238,15 @@ describe("decisions that change when they come back", () => {
     });
     expect(s.job.level).toBe(4); // mentoring the next one is as high as this job goes
 
-    const lead = adult(22);
-    lead.job = { occ: "accountant", title: "Accountant", mult: 1.2, years: 5, level: 0, formal: true };
-    lead.stats.skill = 80;
-    lead.formalYears = 10;
-    expect(ids(ask(lead, "promotion"))).toEqual(["yes", "coach", "no"]);
+    // each rung has its own title
+    const climb = adult(22);
+    climb.job = { occ: "accountant", title: "Junior accountant", mult: 1.2, years: 5, level: 0, formal: true, industry: "business" };
+    climb.stats.skill = 40;
+    climb.flags["n:promotion"] = 0;
+    const offer = ask(climb, "promotion");
+    expect(offer.body).toMatch(/to accountant/);
+    answer(climb, offer, "yes");
+    expect(climb.job!.title).toBe("Accountant");
   });
 
   it("bring back an illness that was skipped, worse", () => {

@@ -394,6 +394,84 @@ def load_btc() -> dict:
 # --------------------------------------------------------------------------- main
 
 
+# The game's industries: the US series to use (detailed first, then the long one it continues),
+# and the ILO sections that make them up everywhere else.
+LABOUR_INDUSTRIES = {
+    "tech": (["tech", "info"], ["HJ"]),
+    "finance": (["finance"], ["K"]),
+    "manufacturing": (["manufacturing"], ["C"]),
+    "construction": (["construction"], ["F"]),
+    "energy": (["mining"], ["B", "DE"]),
+    "health": (["health", "eduhealth"], ["Q"]),
+    "education": (["education", "eduhealth"], ["P"]),
+    "public": (["public"], ["O"]),
+    "retail": (["retail"], ["G"]),
+    "hospitality": (["hospitality"], ["I"]),
+    "transport": (["transport", "tpu"], ["HJ"]),
+    "media": (["info"], ["HJ"]),
+    "services": (["hospitality"], ["RSTU"]),  # arts, personal and household services
+    "business": (["business"], ["LMN"]),
+    "agriculture": ([], ["A"]),
+}
+LABOUR_Y0 = 1940  # first year with a full year before it in the US series
+ILO_Y0 = 1992
+
+
+def fred_yearly(name: str) -> dict[int, float]:
+    """A monthly FRED series at the end of each year (October to December), so a bust shows up in the year it starts."""
+    path = RAW / f"fred_{name}.csv"
+    if not path.exists():
+        return {}
+    months: dict[int, list[float]] = {}
+    for line in path.read_text().splitlines()[1:]:
+        date, value = line.split(",")
+        if value and value != "." and int(date[5:7]) >= 10:
+            months.setdefault(int(date[:4]), []).append(float(value))
+    return {y: sum(v) / len(v) for y, v in months.items() if len(v) == 3}
+
+
+def growth_tenths(levels: dict[int, float], y0: int, y1: int) -> list[int | None]:
+    """Year-on-year change in tenths of a percent."""
+    out: list[int | None] = []
+    for y in range(y0, y1 + 1):
+        a, b = levels.get(y - 1), levels.get(y)
+        out.append(None if not a or b is None else max(-999, min(999, round((b / a - 1) * 1000))))
+    return out
+
+
+def build_labour(isos: set[str]) -> dict:
+    """Jobs by industry: US growth since 1940 (BLS via FRED), every country's since 1992 (ILO modelled estimates)."""
+    fred = {name: fred_yearly(name) for name in {n for us, _ in LABOUR_INDUSTRIES.values() for n in us}}
+    us: dict[str, list[int | None]] = {}
+    for ind, (names, _) in LABOUR_INDUSTRIES.items():
+        # the detailed series where it exists, carried back by the broader one it belongs to
+        series: list[int | None] = [None] * (Y1 - LABOUR_Y0 + 1)
+        for name in reversed(names):
+            for i, g in enumerate(growth_tenths(fred[name], LABOUR_Y0, Y1)):
+                if g is not None:
+                    series[i] = g
+        if any(v is not None for v in series):
+            us[ind] = series
+    levels: dict[str, dict[str, dict[int, float]]] = {}
+    ilo_path = RAW / "ilo_emp_by_industry.csv"
+    if ilo_path.exists():
+        for row in pd.read_csv(ilo_path, usecols=["REF_AREA", "ECO", "TIME_PERIOD", "OBS_VALUE"]).itertuples(index=False):
+            if row.REF_AREA in isos and not math.isnan(row.OBS_VALUE):
+                sec = row.ECO.replace("ECO_ISIC4_", "")
+                levels.setdefault(row.REF_AREA, {}).setdefault(sec, {})[int(row.TIME_PERIOD)] = float(row.OBS_VALUE)
+    ilo: dict[str, dict[str, list[int | None]]] = {}
+    for iso, secs in sorted(levels.items()):
+        out: dict[str, list[int | None]] = {}
+        for ind, (_, parts) in LABOUR_INDUSTRIES.items():
+            if not all(p in secs for p in parts):
+                continue
+            years = set.intersection(*(set(secs[p]) for p in parts))
+            total = {y: sum(secs[p][y] for p in parts) for y in years}
+            out[ind] = growth_tenths(total, ILO_Y0, Y1)
+        ilo[iso] = out
+    return {"y0": LABOUR_Y0, "us": us, "i0": ILO_Y0, "ilo": ilo}
+
+
 def main() -> None:
     meta = json.loads((RAW / "wb_countries.json").read_text())[1]
     countries = {c["id"]: c for c in meta if c["region"]["value"].strip() != "Aggregates"}
@@ -657,12 +735,15 @@ def main() -> None:
         "markets": out_markets,
         "us": dam,
         "btc": btc,
+        "labour": build_labour(set(out_countries)),
         "sources": [
             "World Bank, World Development Indicators (api.worldbank.org)",
             "OECD Financial Market statistics (sdmx.oecd.org)",
             "Jorda-Schularick-Taylor Macrohistory Database R6 (macrohistory.net)",
             "Damodaran, Historical Returns on Stocks, Bonds and Bills (NYU Stern)",
             "Bitcoin market price (blockchain.com)",
+            "BLS Current Employment Statistics, US jobs by industry (via FRED)",
+            "ILO modelled estimates, employment by economic activity (ILOSTAT)",
         ],
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

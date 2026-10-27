@@ -1,6 +1,6 @@
 import { FIELD_NAMES } from "./content/occupations";
 import { UNIVERSITY_CLOSED } from "./history";
-import { bump, clamp, dev, log, W } from "./ops";
+import { bump, clamp, dev, eduAtLeast, log, W } from "./ops";
 import type { Edu, Field, LifeState } from "./types";
 import { nearest } from "./world";
 
@@ -48,7 +48,7 @@ export function graduate(s: LifeState): Edu {
   const sc = s.school!;
   let reached: Edu = sc.kind;
   if (sc.kind === "bachelor" && sc.field === "medicine") reached = "doctorate";
-  s.edu = reached;
+  if (!eduAtLeast(s.edu, reached)) s.edu = reached; // retraining never takes away a degree you already have
   s.school = null;
   const gain: Partial<Record<Edu, number>> = { vocational: 6, bachelor: 10, master: 8, doctorate: 10 };
   bump(s, "skill", gain[reached] ?? 3);

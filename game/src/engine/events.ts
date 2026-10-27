@@ -4,21 +4,22 @@
 // option is applied by looking the event up again.
 
 import { BIZ, BUSINESSES } from "./content/business";
-import { FIELD_NAMES, OCC } from "./content/occupations";
+import { FIELD_NAMES, MAJORS, majorOpen, OCC, titleAt } from "./content/occupations";
 import { givenName, nameGroupFor } from "./content/names";
 import { pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
+import { industryGrowth, INDUSTRY_NAMES, recentGrowth } from "./labour";
 import { econ, type YearEcon } from "./macro";
 import { referenceHealth } from "./mortality";
 import { liquidateDesk, shrinkDesk } from "./desk";
 import {
   addDue, adult, annuity, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, commit, commitments, consumerRate, dev, ec,
-  eduAtLeast, endBusiness, endCommitment, followUp,
-  fmt, homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay, raiseCash,
+  eduAtLeast, employerFor, endBusiness, endCommitment, followUp, jobIndustry, startingPay,
+  fmt, homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay, payCeiling, payMultiple, raiseCash,
   rebalance, retirementAge, salary, sellProperty, startBusiness, stockValue, takeJob, W, type Offer,
 } from "./ops";
 import { stream, type Rng } from "./rng";
-import { admissionChance, startSchool, tuitionPerYear, universityClosed } from "./school";
+import { admissionChance, schoolYears, startSchool, tuitionPerYear, universityClosed } from "./school";
 import {
   ASSET_KEYS, type Allocation, type AssetKey, type BizType, type Decision, type DecisionOption, type Edu, type Field,
   type LifeState, type Stock,
@@ -620,15 +621,23 @@ const DEFS: EventDef[] = [
   {
     id: "choose_field",
     tag: "life",
-    build: (s, _c, p) => {
-      const fields: Field[] = ["stem", "business", "medicine", "law", "education", "arts"];
-      const need: Partial<Record<Field, number>> = { medicine: 62, law: 52, stem: 45 };
+    build: (s, c, p) => {
+      // what a student could know: what graduates earn now, and how hiring has gone lately
+      const options = MAJORS.filter((m) => majorOpen(m.field, s.year, dev(s))).map((m) => {
+        const job = OCC[m.job];
+        const years = schoolYears("bachelor", m.field);
+        const hiring = recentGrowth(s.country, s.year, job.industry, s.macroSeed);
+        return o(
+          m.field,
+          FIELD_NAMES[m.field],
+          `${years} years · new ${job.title.toLowerCase()}s earn about ${fmt(s, startingPay(s, job) * c.w)} · ${INDUSTRY_NAMES[job.industry]} jobs ${signedPct(hiring)} a year lately`,
+          m.need > s.stats.skill && `Needs skill ${m.need}+`,
+        );
+      });
       return {
         title: "Pick your major",
         body: p.abroad ? "You're heading abroad. What will you study?" : "What will you study?",
-        options: fields.map((f) =>
-          o(f, FIELD_NAMES[f], f === "medicine" ? "6 years, then the best-paid safe job there is" : f === "arts" ? "Follow your heart" : undefined, (need[f] ?? 0) > s.stats.skill && `Needs skill ${need[f]}+`),
-        ),
+        options,
         payload: p,
       };
     },
@@ -703,13 +712,21 @@ const DEFS: EventDef[] = [
     tag: "career",
     core: true,
     cooldown: 2,
-    chance: (s) => (s.job && !s.retired && s.age >= 22 && s.age <= 62 ? 0.05 + s.stats.network / 800 + s.stats.skill / 1500 : 0),
+    chance: (s) =>
+      s.job && !s.retired && s.age >= 22 && s.age <= 62
+        ? (0.05 + s.stats.network / 800 + s.stats.skill / 1500) * clamp(1 + 3 * industryGrowth(s.country, s.year, jobIndustry(s), s.macroSeed), 0.3, 2)
+        : 0,
     build: (s, c) => {
       const cur = s.job;
       if (!cur) return null; // asked for after a job was already lost
-      const offers = makeOffers(s, c.r, 1).filter((x) => x.mult > cur.mult * 1.08);
-      if (!offers.length) return null;
-      const of = offers[0];
+      // most moves are to another employer in the same line of work, sometimes a rung up
+      let of: Offer | undefined;
+      if (c.r.chance(0.7)) {
+        const level = Math.min(4, cur.level + (c.r.chance(0.4) ? 1 : 0));
+        const mult = Math.min(cur.mult * c.r.range(1.08, 1.2), Math.max(cur.mult, payCeiling(s, OCC[cur.occ])));
+        of = { occ: cur.occ, title: titleAt(OCC[cur.occ], level), mult, employer: employerFor(cur.occ, c.r), level, industry: jobIndustry(s) };
+      } else of = makeOffers(s, c.r, 1).find((x) => x.mult > cur.mult * 1.08);
+      if (!of) return null;
       const raise = of.mult / cur.mult - 1;
       const who = `${of.employer[0].toUpperCase()}${of.employer.slice(1)}`;
       const [title, lead] = c.r.pick([
@@ -790,8 +807,14 @@ const DEFS: EventDef[] = [
     chance: (s, c) => {
       if (!s.job || s.retired) return 0;
       const occ = OCC[s.job.occ];
-      const slump = c.e.recession ? 1 + occ.cyclical * Math.min(2, -c.e.realGrowth * 25) : 1;
-      return clamp(occ.layoff * slump * (1.2 - s.stats.skill / 200) * (c.e.war > 100 ? 2 : 1), 0, 0.6);
+      // the everyday risk, which a country's slump and a dying trade raise...
+      const slump = c.e.recession ? 1 + 0.5 * occ.cyclical * Math.min(2, -c.e.realGrowth * 25) : 1;
+      const fading = occ.fades && s.year > occ.fades ? Math.min(0.1, 0.01 * (s.year - occ.fades)) : 0;
+      const everyday = (occ.layoff * slump + fading) * (s.job.years < 3 ? 1.1 : s.job.years >= 10 ? 0.8 : 1);
+      // ...and the jobs an industry is shedding, cut newest first
+      const shed = Math.max(0, -industryGrowth(s.country, s.year, jobIndustry(s), s.macroSeed)) * (s.job.years < 3 ? 1.8 : s.job.years >= 10 ? 0.5 : 1);
+      const steady = Number(s.flags.steadyUntil ?? 0) >= s.year ? 0.5 : 1;
+      return clamp((everyday + shed) * steady * (1.2 - s.stats.skill / 200) * (c.e.war > 100 ? 2 : 1), 0, 0.6);
     },
     build: (s, c) => {
       const sev = s.job!.formal && dev(s) >= 0.5 ? 0.25 * salary(s) : 0;
@@ -806,6 +829,22 @@ const DEFS: EventDef[] = [
           ]);
       const before = Number(s.flags["n:layoff"] ?? 0);
       const sevLine = sev > 0 ? ` Severance: ${fmt(s, sev)}.` : "";
+      // laid off in a bust: nobody in the field is hiring
+      const ind = jobIndustry(s);
+      const g = industryGrowth(s.country, s.year, ind, s.macroSeed);
+      if (g <= -0.03) {
+        return {
+          title: c.r.pick([`Nobody in ${INDUSTRY_NAMES[ind]} is hiring`, "Laid off in a bust"]),
+          body: `${why} You lose your job as ${aTitle(s.job!.title)}. Jobs in ${INDUSTRY_NAMES[ind]} here are down ${pct(-g, 0)} this year, and nobody in it is hiring.${sevLine}`,
+          options: [
+            o("outside", "Take work outside your field", "Lower pay, for now"),
+            o("wait", `Wait for ${INDUSTRY_NAMES[ind]} to recover`, "A year or more without pay"),
+            o("study", "Retrain for a growing field", s.age > 45 ? undefined : "Back to school", s.age > 45 && "Too late for that"),
+            o("freelance", "Freelance in your old line of work", "Some income, no security"),
+          ],
+          payload: { sev, ind },
+        };
+      }
       if (before === 0) {
         return {
           title: c.r.pick(["Laid off", "Out of a job", "The end of a job"]),
@@ -839,13 +878,22 @@ const DEFS: EventDef[] = [
       };
     },
     resolve: (s, c, p, opt) => {
+      if (!s.job) return; // already gone, on a redundancy package
       const sev = Number(p.sev);
-      const lastMult = s.job?.mult ?? 0.5;
+      const lastMult = s.job.mult;
       loseJob(s);
       if (sev > 0) invest(s, sev);
       bump(s, "happiness", -6);
       log(s, "You're out of work.", "bad");
-      if (opt === "quick") {
+      if (opt === "outside") {
+        const of = makeOffers(s, c.r, 6).find((x) => OCC[x.occ].industry !== p.ind);
+        if (of) {
+          takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 0.8) });
+          log(s, `You take a job outside your field, as ${aTitle(of.title)}.`, "neutral");
+        }
+      } else if (opt === "wait") s.flags.searching = s.year + 1;
+      else if (opt === "freelance") commit(s, { key: "freelance", label: "Freelance work", wage: 0.35 * lastMult, until: s.year + 1, happiness: -1 });
+      else if (opt === "quick") {
         const offers = makeOffers(s, c.r, 3);
         const of = offers.sort((a, b) => Math.abs(a.mult - lastMult * 0.85) - Math.abs(b.mult - lastMult * 0.85))[0];
         if (of) {
@@ -880,24 +928,27 @@ const DEFS: EventDef[] = [
     tag: "career",
     core: true,
     cooldown: 3,
-    chance: (s) => (s.job && s.job.years >= 3 && s.job.level < 4 && !s.retired && s.job.formal ? 0.06 + s.stats.skill / 900 + s.stats.network / 1200 : 0),
+    chance: (s) =>
+      s.job && s.job.years >= 3 && s.job.level < 4 && !s.retired && s.job.formal
+        ? (0.06 + s.stats.skill / 900 + s.stats.network / 1200) * clamp(1 + 2 * industryGrowth(s.country, s.year, jobIndustry(s), s.macroSeed), 0.5, 1.6)
+        : 0,
     build: (s, c) => {
       const j = s.job!;
-      const mgr = OCC.manager;
-      const toManager = !["manager", "executive", "doctor", "lawyer", "professor", "farmer", "laborer", "vendor", "domestic", "creator", "driver", "retail", "construction", "soldier"].includes(j.occ) && s.formalYears >= 6 && s.stats.skill >= mgr.skill;
-      const toExec = j.occ === "manager" && s.stats.skill >= 75 && s.stats.network >= 60 && s.formalYears >= 12;
+      // each job climbs its own ladder, management rungs included; the corner office is for the top of a company's ladders
+      const corporate = !["public", "health", "education"].includes(jobIndustry(s));
+      const toExec = (j.occ === "manager" || (corporate && OCC[j.occ].ladder != null && j.level >= 3)) && s.stats.skill >= 75 && s.stats.network >= 60 && s.formalYears >= 12;
       const occ = OCC[j.occ];
-      const premium = occ.pay > 1 ? 1 + (occ.pay - 1) * (1 + 0.6 * (1 - dev(s))) : occ.pay;
-      const ceiling = premium * (1 + occ.growth) ** occ.peak * 1.35;
-      if (!toManager && !toExec && j.mult >= ceiling) return null;
+      const ceiling = payCeiling(s, occ);
+      if (!toExec && j.mult >= ceiling) return null;
       const base = { occ: j.occ, title: j.title, from: j.occ, since: s.year - j.years };
+      const next = titleAt(occ, j.level + 1).toLowerCase();
       // the same work a rung higher: each offer in a job asks something different
-      const stage = toManager || toExec ? 0 : Math.min(3, Number(s.flags["n:promotion"] ?? 0));
+      const stage = toExec ? 0 : Math.min(3, Number(s.flags["n:promotion"] ?? 0));
       if (stage === 1) {
         const mult = Math.min(ceiling, j.mult * c.r.range(1.06, 1.12));
         return {
           title: c.r.pick(["A senior role", "More responsibility"]),
-          body: `They want you in a senior role: ${fmt(s, mult * c.w)} a year, and you'd answer for other people's work as well as your own.`,
+          body: `They want you as ${aTitle(next)}: ${fmt(s, mult * c.w)} a year, and you'd answer for other people's work as well as your own.`,
           options: [
             o("yes", "Take it", `${signedPct(mult / j.mult - 1)} pay, longer hours`),
             o("flex", s.year >= 2005 ? "Take it, if you can work from home two days a week" : "Take it, if you can keep shorter hours", "Half the raise, more of your life"),
@@ -911,7 +962,7 @@ const DEFS: EventDef[] = [
         const mult = Math.min(ceiling * 1.1, j.mult * c.r.range(1.15, 1.25));
         return {
           title: "Your boss is leaving",
-          body: `Your boss is moving on, and the job is open: ${fmt(s, mult * c.w)} a year. A colleague you like wants it too.`,
+          body: `Your boss is moving on, and the job is open: ${next}, at ${fmt(s, mult * c.w)} a year. A colleague you like wants it too.`,
           options: [o("apply", "Go for it", "You might get it. You might not"), o("back", "Back your colleague for it", "A friend in a high place"), o("stay", "Stay out of it")],
           payload: { ...base, mult, stage },
         };
@@ -920,7 +971,7 @@ const DEFS: EventDef[] = [
         const mult = Math.min(ceiling * 1.15, j.mult * 1.2);
         return {
           title: "The top of the ladder",
-          body: `They want you to run the whole department: ${fmt(s, mult * c.w)} a year, and everything that goes wrong is yours.`,
+          body: `They want you to run the whole department as ${next}: ${fmt(s, mult * c.w)} a year, and everything that goes wrong is yours.`,
           options: [
             o("run", "Take it", "The pay, and the pressure"),
             o("share", "Share it with a colleague", "A smaller raise, half the weight"),
@@ -929,9 +980,9 @@ const DEFS: EventDef[] = [
           payload: { ...base, mult, stage },
         };
       }
-      const mult = toExec ? Math.max(j.mult * 1.4, 3.5) : toManager ? Math.max(j.mult * 1.2, mgr.pay) : Math.min(ceiling, j.mult * c.r.range(1.05, 1.12));
-      const title = toExec ? "Executive" : toManager ? "Manager" : j.title;
-      const step = toManager || toExec ? `a job as ${aTitle(title)}` : "a step up";
+      const mult = toExec ? Math.max(j.mult * 1.4, 3.5) : Math.min(ceiling, j.mult * c.r.range(1.05, 1.12));
+      const title = toExec ? "Executive" : j.title;
+      const step = toExec ? `a job as ${aTitle(title)}` : `a step up, to ${next}`;
       const why = c.r.pick([
         `Your boss offers you ${step}`,
         `A senior colleague is leaving, and they want you to take over: ${step}`,
@@ -940,27 +991,22 @@ const DEFS: EventDef[] = [
       ]);
       const raise = `${signedPct(mult / j.mult - 1)} pay`;
       return {
-        title: toExec ? "The corner office" : toManager ? "Leading a team" : c.r.pick(["A promotion", "A step up", "Moving up"]),
+        title: toExec ? "The corner office" : c.r.pick(["A promotion", "A step up", "Moving up"]),
         body: `${why}: ${fmt(s, mult * c.w)} a year, longer hours.`,
         options: toExec
           ? [o("yes", "Take the corner office", raise), o("equity", "Take less salary, for shares in the company", "A tenth less pay, and a stake if it's ever sold"), o("no", "Decline", "Keep your life")]
-          : toManager
-            ? [o("yes", "Lead the team", raise), o("coach", "Lead it, and keep doing the work yourself", "Half the raise, and you stay sharp"), o("no", "Stay a specialist", "Get better at what you do")]
-            : [
-                o("yes", "Accept", raise),
-                o("more", "Accept, but ask for more", "Often works. Sometimes the job goes to someone else"),
-                o("no", "Decline", "Keep your evenings"),
-              ],
-        payload: { mult, occ: toExec ? "executive" : toManager ? "manager" : j.occ, title, from: j.occ, since: s.year - j.years, stage },
+          : [
+              o("yes", "Accept", raise),
+              o("more", "Accept, but ask for more", "Often works. Sometimes the job goes to someone else"),
+              o("no", "Decline", "Keep your evenings"),
+            ],
+        payload: { mult, occ: toExec ? "executive" : j.occ, title, from: j.occ, since: s.year - j.years, stage },
       };
     },
     resolve: (s, c, p, opt) => {
       if (!s.job || s.job.occ !== p.from || s.year - s.job.years !== p.since) return; // you changed jobs in the meantime
       const job = s.job;
-      if (opt === "no" || opt === "stay") {
-        if (p.occ !== job.occ) bump(s, "skill", 2); // staying a specialist
-        return;
-      }
+      if (opt === "no" || opt === "stay") return;
       let mult = Number(p.mult);
       if (opt === "train") {
         job.mult *= 1.02;
@@ -993,10 +1039,6 @@ const DEFS: EventDef[] = [
       }
       if (opt === "share") mult = job.mult * 1.08;
       if (opt === "run") commit(s, { key: "pressure", label: "Running the department", wage: 0, until: s.year + 4, needsJob: true, health: -1, happiness: -1 });
-      if (opt === "coach") {
-        mult = job.mult + (mult - job.mult) / 2;
-        bump(s, "skill", 2);
-      }
       if (opt === "equity") {
         mult *= 0.9;
         const st = makeStock(s, c.r, true);
@@ -1013,6 +1055,7 @@ const DEFS: EventDef[] = [
       }
       job.mult = mult;
       job.level = opt === "run" || opt === "share" ? 4 : job.level + 1; // the top of the ladder is as high as this job goes
+      if (p.occ === job.occ && OCC[job.occ].ladder) job.title = titleAt(OCC[job.occ], job.level);
       if (p.occ !== job.occ) {
         job.occ = String(p.occ);
         job.title = String(p.title);
@@ -1020,14 +1063,13 @@ const DEFS: EventDef[] = [
       }
       bump(s, "happiness", 3);
       const done: Record<string, string> = {
-        coach: "You lead the team and keep your hand in the work.",
         equity: "You take the corner office, and shares instead of part of the salary.",
         flex: "You take the senior role, on your terms.",
         apply: "You get your boss's job.",
         run: "You take charge of the department.",
         share: "You and a colleague run the department together.",
       };
-      log(s, done[opt] ?? (p.occ === p.from ? "You're promoted." : `Promoted — you're now ${job.title.toLowerCase()}.`), "good");
+      log(s, done[opt] ?? `Promoted — you're now ${aTitle(job.title.toLowerCase())}.`, "good");
     },
   },
   {
@@ -2682,6 +2724,128 @@ const DEFS: EventDef[] = [
     resolve: (s, _c, _p, opt) => {
       if (opt === "evenings") commit(s, { key: "gig", label: "App work", wage: 0.2, until: s.year + 2, health: -2, happiness: -1 });
       else if (opt === "weekends") commit(s, { key: "gig", label: "App work", wage: 0.08, until: s.year + 2 });
+    },
+  },
+  {
+    id: "industry_trouble",
+    tag: "career",
+    cooldown: 4,
+    chance: (s) => (s.job?.formal && !s.retired && industryGrowth(s.country, s.year, jobIndustry(s), s.macroSeed) <= -0.04 ? 0.6 : 0),
+    build: (s, c) => {
+      const ind = jobIndustry(s);
+      const g = industryGrowth(s.country, s.year, ind, s.macroSeed);
+      return {
+        title: c.r.pick(["A hiring freeze", "Cuts are coming", `${upperFirst(INDUSTRY_NAMES[ind])} is shedding jobs`]),
+        body: `Jobs in ${INDUSTRY_NAMES[ind]} here are down ${pct(-g, 0)} this year. Your employer has frozen hiring, and people are being let go.`,
+        options: [
+          o("stay", "Keep your head down", "And hope"),
+          o("steady", "Move to a steadier employer", "A little less pay, a safer seat for a few years"),
+          o("package", "Take the voluntary redundancy package", `${fmt(s, 0.5 * salary(s))}, and you're out`),
+          o("retrain", "Start retraining at night", "Another field, in two years"),
+        ],
+      };
+    },
+    resolve: (s, _c, _p, opt) => {
+      if (!s.job) return;
+      if (opt === "steady") {
+        s.job.mult *= 0.92;
+        s.flags.steadyUntil = s.year + 4;
+        log(s, "You move to a steadier employer, for a little less.", "neutral");
+      } else if (opt === "package") {
+        const pkg = 0.5 * salary(s);
+        loseJob(s);
+        invest(s, pkg);
+        s.flags.searching = s.year + 1;
+        log(s, `You take the redundancy package: ${fmt(s, pkg)}.`, "money");
+      } else if (opt === "retrain") {
+        bump(s, "skill", 3);
+        bump(s, "health", -1);
+        followUp(s, "new_field", 2);
+      } else bump(s, "happiness", -2);
+    },
+  },
+  {
+    id: "bidding_war",
+    tag: "career",
+    cooldown: 3,
+    chance: (s) => (s.job?.formal && !s.retired && s.job.years >= 2 && industryGrowth(s.country, s.year, jobIndustry(s), s.macroSeed) >= 0.07 ? 0.3 : 0),
+    build: (s, c) => {
+      const ind = jobIndustry(s);
+      return {
+        title: c.r.pick(["Everyone is hiring", "Recruiters keep calling", "A bidding war for you"]),
+        body: `Jobs in ${INDUSTRY_NAMES[ind]} here grew ${pct(industryGrowth(s.country, s.year, ind, s.macroSeed), 0)} this year. Three companies want you, and they're competing.`,
+        options: [
+          o("jump", "Take the best offer", "A quarter more pay, and you're the new hire again"),
+          o("raise", "Use it to get a raise where you are", "About an eighth more"),
+          o("startup", "Join a startup for shares", "Less pay, a slice of something"),
+          o("loyal", "Stay loyal", "Your boss will remember"),
+        ],
+      };
+    },
+    resolve: (s, c, _p, opt) => {
+      if (!s.job) return;
+      if (opt === "jump") {
+        s.job.mult *= 1.25;
+        s.job.years = 0; // the last in, the first out if it turns
+        s.counters.jobChanges++;
+        log(s, "You jump to the best offer.", "good");
+      } else if (opt === "raise") {
+        s.job.mult *= 1.12;
+        log(s, "Your employer matches most of it to keep you.", "good");
+      } else if (opt === "startup") {
+        s.job.mult *= 0.85;
+        s.job.years = 0;
+        const st = makeStock(s, c.r, true);
+        st.value = 0.4 * W(s);
+        st.cost = st.value;
+        s.stocks.push(st);
+        log(s, `You join ${st.name}, for shares and a little less pay.`, "milestone");
+      } else {
+        bump(s, "network", 4);
+        s.flags.steadyUntil = s.year + 3;
+        log(s, "You stay. Your boss notices.", "good");
+      }
+    },
+  },
+  {
+    id: "dying_trade",
+    tag: "career",
+    cooldown: 6,
+    chance: (s) => {
+      const occ = s.job ? OCC[s.job.occ] : null;
+      return occ?.fades && !s.retired && s.year >= occ.fades + 2 ? 0.25 : 0;
+    },
+    build: (s) => {
+      const occ = OCC[s.job!.occ];
+      const related = occ.related ? OCC[occ.related] : null;
+      return {
+        title: `Fewer people need ${occ.title.toLowerCase()}s`,
+        body: `${occ.fadeWhy} Every year there are fewer jobs like yours.`,
+        options: [
+          o("retrain", "Retrain for something new", "Two years of training", s.age > 50 && "Too late for that"),
+          ...(related ? [o("move", `Move into work as ${aTitle(related.title.toLowerCase())}`, "Less pay at first, a future")] : []),
+          o("hang", "Hang on as long as you can", "The cuts will come"),
+          ...(s.age >= 55 ? [o("early", "Retire early", "A smaller pension, starting now")] : []),
+        ],
+      };
+    },
+    resolve: (s, c, _p, opt) => {
+      if (!s.job) return;
+      const occ = OCC[s.job.occ];
+      if (opt === "retrain") {
+        loseJob(s);
+        startSchool(s, "vocational");
+        log(s, "You go back to school to learn a new trade.", "milestone");
+      } else if (opt === "move" && occ.related) {
+        const to = OCC[occ.related];
+        takeJob(s, { occ: to.id, title: titleAt(to, 0), mult: Math.min(s.job.mult * 0.9, payMultiple(s, to, c.r)), employer: "a new employer", level: 0 });
+        log(s, `You move into work as ${aTitle(to.title.toLowerCase())}.`, "neutral");
+      } else if (opt === "early") {
+        s.pension = pensionFor(s) * 0.8;
+        loseJob(s);
+        s.retired = true;
+        log(s, `You retire early, at ${s.age}.`, "milestone");
+      }
     },
   },
   // ------------------------------------------------------------- everyday life: money

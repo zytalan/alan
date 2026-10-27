@@ -10,11 +10,12 @@ import { finishDeskYear, markDeskYearStart } from "./desk";
 import { enqueue, EVENT_MAP, EVENTS, destinations, rentIncome, syncAllocation, type EventCtx } from "./events";
 import { oneIn, pct, topPercent } from "./format";
 import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
+import { industryGrowth, INDUSTRY_NAMES } from "./labour";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
   addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, commitments, consumerRate, creditLimit, dev, ec, endCommitment,
-  endBusiness, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay,
+  endBusiness, fieldExp, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, jobIndustry, liquid, log, loseJob, makeStock, netWorth, pay,
   priceToIncome, propertyValue, raiseCash, rebalance, realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock,
   stockValue, totalDebt, usdPremium,
 } from "./ops";
@@ -767,13 +768,19 @@ export function resolveYear(s: LifeState): void {
     s.creditLockUntil = Math.max(s.creditLockUntil, s.year + 5);
   }
 
-  // ---- careers tick
+  // ---- careers tick: experience in the industry you're in, and raises that follow how it's doing
   if (s.job) {
     const occ = OCC[s.job.occ];
+    const ind = jobIndustry(s);
     s.job.years++;
     s.workYears++;
     if (s.job.formal) s.formalYears++;
-    s.job.mult *= (1 + (s.workYears <= occ.peak ? occ.growth : 0)) * Math.exp(r.normal(-0.0001, 0.015));
+    s.indYears = { ...s.indYears, [ind]: (s.indYears?.[ind] ?? 0) + 1 };
+    const g = industryGrowth(s.country, s.year, ind, s.macroSeed);
+    if (g <= -0.05) log(s, `Jobs in ${INDUSTRY_NAMES[ind]} here fell ${pct(-g, 0)} this year.`, "bad");
+    else if (g >= 0.08) log(s, `${INDUSTRY_NAMES[ind][0].toUpperCase()}${INDUSTRY_NAMES[ind].slice(1)} is booming here: jobs grew ${pct(g, 0)} this year.`, "good");
+    const boom = clamp(0.2 * g, -0.01, 0.03);
+    s.job.mult *= (1 + (fieldExp(s, ind) <= occ.peak ? occ.growth : 0) + boom) * Math.exp(r.normal(-0.0001, 0.015));
   } else if (adult(s) && !s.retired && !s.school && !s.business && s.age >= 18) s.unemployedYears++;
   if (s.partner && s.age < 50) s.partner.mult *= 1.005;
 

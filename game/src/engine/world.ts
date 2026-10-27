@@ -1,5 +1,7 @@
 // Access to the bundled real-world dataset (public/data/world.json).
 
+import type { LabourData } from "./labour";
+
 export type SeriesKey =
   | "pop" | "births" | "tfr" | "leM" | "leF" | "imr" | "u5" | "ppp" | "lcu" | "infl" | "fx"
   | "dep" | "lend" | "gr" | "gini" | "unemp" | "prim" | "sec" | "ter" | "acct" | "agr" | "self";
@@ -39,6 +41,7 @@ export interface WorldData {
   markets: Record<string, MarketData>;
   us: { y0: number; sp: Series; tbill: Series; tbond: Series; re: Series; gold: Series };
   btc: { y0: number; px: Series };
+  labour?: LabourData;
   sources: string[];
 }
 

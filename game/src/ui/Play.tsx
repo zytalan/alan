@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   advance, ASSET_KEYS, ASSET_LABEL, availableAssets, BIZ, buyHome, careerAction, careerOptions, choose, closeBusiness,
   consumerRate, country, countryIn, countryName, creditLimit, deskAccess, deskValue, ec, econ, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
-  fmtIn, hasMarkets, homePrice, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
+  fmtIn, hasMarkets, homePrice, industryGrowth, INDUSTRY_NAMES, jobIndustry, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
   retirementAge, salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, signedPct, stageName, steady, toToday,
   tradeAsset, usd, W,
   wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
@@ -559,6 +559,23 @@ function Row({ label, value, share }: { label: string; value: string; share?: nu
   );
 }
 
+/** Your industry, how long you've been in it, and how its jobs went last year: what you'd know at the time. */
+function IndustryLine({ s }: { s: LifeState }) {
+  const ind = jobIndustry(s);
+  const name = INDUSTRY_NAMES[ind];
+  const g = industryGrowth(s.country, s.year - 1, ind, s.macroSeed);
+  const years = s.indYears?.[ind] ?? 0;
+  return (
+    <>
+      <span>Industry</span>
+      <span>
+        {name[0].toUpperCase() + name.slice(1)} · {years} {years === 1 ? "year" : "years"} in it · jobs here{" "}
+        <span className={g < 0 ? "neg" : ""}>{signedPct(g)}</span> last year
+      </span>
+    </>
+  );
+}
+
 function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
   const opts = careerOptions(s);
   const kidsHome = s.kids.filter((k) => s.year - k.born < 22).length;
@@ -585,6 +602,7 @@ function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
             </span>
           </>
         )}
+        {s.job && <IndustryLine s={s} />}
         {s.retired && s.pension > 0 && (
           <>
             <span>Pension</span>
