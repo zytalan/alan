@@ -57,11 +57,24 @@ export const typical: Chooser = (s, d) => {
     case "first_job":
       return prefer(d, "o0");
     case "job_offer":
-      return r < 0.12 ? "counter" : "take";
+      if (r < 0.12) return "counter";
+      return r < 0.3 ? prefer(d, "bonus", "remote", "take") : "take";
     case "layoff":
+      if (ok.includes("safe") && r < 0.3) return "safe";
+      if (ok.includes("early") && r < 0.5) return "early";
+      if (ok.includes("move") && r > 0.85) return "move";
       return "quick";
     case "promotion":
-      return "yes";
+      switch (Number(d.payload.stage ?? 0)) {
+        case 1:
+          return r < 0.6 ? "yes" : r < 0.75 ? "flex" : r < 0.85 ? "train" : "no";
+        case 2:
+          return r < 0.6 ? "apply" : r < 0.8 ? "back" : "stay";
+        case 3:
+          return r < 0.5 ? "run" : r < 0.8 ? "share" : "mentor";
+        default:
+          return ok.includes("coach") && r < 0.2 ? "coach" : ok.includes("equity") && r < 0.2 ? "equity" : "yes";
+      }
     case "side_hustle":
       return r < 0.3 ? (ok.find((id) => id !== "no") ?? "no") : "no";
     case "burnout":
@@ -75,6 +88,7 @@ export const typical: Chooser = (s, d) => {
     case "crash_reaction":
       return r < 0.25 ? "sell" : r < 0.4 ? "half" : "hold";
     case "bubble":
+      if (ok.includes("out") && r > 0.9) return "out";
       return d.payload.asset === "localEq" && r < 0.05 ? "allin" : "steady";
     case "stock_tip":
       return r < 0.15 ? "small" : "pass";
@@ -96,21 +110,29 @@ export const typical: Chooser = (s, d) => {
     case "crypto_custody":
       return "exchange";
     case "debt_crisis":
-      return prefer(d, "family", s.consumerDebt > 2 * (s.history[s.history.length - 1]?.income ?? 0) ? "bankrupt" : "pay", "bankrupt");
+      if (ok.includes("home") && r < 0.3) return "home";
+      return prefer(d, "family", s.consumerDebt > 2 * (s.history[s.history.length - 1]?.income ?? 0) ? "bankrupt" : "pay", "bankrupt", "pay");
     case "romance":
+      if (ok.includes("prenup") && r < 0.25) return "prenup";
       return r < 0.75 ? "yes" : "no";
     case "wedding":
       return r < 0.5 ? "small" : "big";
     case "baby":
-      return "yes";
+      return ok.includes("bigger") && r < 0.3 ? "bigger" : "yes";
     case "divorce":
       return "split";
-    case "illness":
-      return Number(d.payload.cost ?? 0) <= liquid(s) ? "best" : "basic";
+    case "illness": {
+      const afford = Number(d.payload.cost ?? 0) <= liquid(s);
+      if (ok.includes("change")) return r < 0.45 && afford ? "best" : r < 0.75 ? "manage" : r < 0.9 ? "change" : "skip";
+      if (ok.includes("manage") && r < 0.4) return "manage";
+      if (ok.includes("rest")) return afford && r < 0.6 ? "best" : r < 0.9 ? "rest" : "skip";
+      if (ok.includes("live") && !afford && r < 0.2) return "live";
+      return afford ? "best" : prefer(d, "basic", "skip");
+    }
     case "insurance":
       return dev(s) >= 0.6 ? "buy" : "no";
     case "parents_support":
-      return "yes";
+      return r < 0.65 ? "yes" : r < 0.85 ? prefer(d, "share", "some") : "some";
     case "teen_gadget":
       return r < 0.4 ? "ask" : r < 0.7 ? "save" : "used";
     case "teen_job":
@@ -207,7 +229,45 @@ export const typical: Chooser = (s, d) => {
     case "sibling_loan":
       return "lend";
     case "kid_college":
-      return "loans";
+      return r < 0.2 ? "pay" : r < 0.35 ? "half" : r < 0.45 ? prefer(d, "local", "loans") : r < 0.5 ? prefer(d, "gap", "loans") : "loans";
+    // choices that come back
+    case "cosign_default":
+      return r < 0.35 ? (liquid(s) >= Number(d.payload.owed ?? 0) ? "pay" : "spread") : r < 0.65 ? "spread" : r < 0.9 ? "rescue" : "refuse";
+    case "loan_trouble":
+      return r < 0.4 ? "forgive" : r < 0.75 ? "wait" : r < 0.9 ? "goods" : "press";
+    case "startup_exit":
+      return r < 0.7 ? "cash" : r < 0.9 ? "shares" : prefer(d, "roll", "quit");
+    case "rental_trouble":
+      if (ok.includes("hold")) return r < 0.65 ? "hold" : r < 0.9 ? "sell" : prefer(d, "keys", "hold");
+      if (ok.includes("evict")) return r < 0.35 ? "plan" : r < 0.65 ? "evict" : r < 0.85 ? "cash" : "sell";
+      return r < 0.55 ? "fix" : r < 0.9 ? "patch" : "sell";
+    case "hustle_grows":
+      return r < 0.15 ? prefer(d, "full", "grow") : r < 0.55 ? "grow" : r < 0.75 ? "sell" : "stop";
+    case "care_change":
+      if (ok.includes("payfee")) return r < 0.65 ? "payfee" : r < 0.85 ? "cheaper" : "bring";
+      if (ok.includes("take")) return r < 0.25 ? "take" : r < 0.45 ? "carehome" : r < 0.8 ? "send" : "leave";
+      if (dev(s) >= 0.6) return r < 0.5 ? "home" : r < 0.75 ? "livein" : prefer(d, "turns", "keep");
+      return r < 0.2 ? "livein" : r < 0.5 ? prefer(d, "turns", "keep") : "keep";
+    case "kid_dropout":
+      return r < 0.3 ? "back" : r < 0.6 ? "finish" : r < 0.75 ? "switch" : "cut";
+    case "pet_sick":
+      if (r < 0.45) return Number(d.payload.cost ?? 0) <= liquid(s) ? "operate" : "comfort";
+      return r < 0.55 ? prefer(d, "fund", "comfort") : r < 0.85 ? "comfort" : "goodbye";
+    case "ponzi_more":
+      return r < 0.25 ? "out" : r < 0.6 ? "stay" : r < 0.85 ? "more" : "recruit";
+    case "card_debt":
+      return r < 0.3 ? prefer(d, "clear", "min") : r < 0.55 ? prefer(d, "loan", "min") : r < 0.85 ? "min" : prefer(d, "family", "min");
+    case "reno_surprise":
+      return r < 0.6 ? "fix" : r < 0.85 ? "hide" : "sell";
+    case "homesick":
+      return r < 0.5 ? "stay" : r < 0.65 ? "back" : r < 0.75 ? prefer(d, "bring", "send") : "send";
+    case "commute_strain":
+      return r < 0.35 ? "move" : r < 0.6 ? "back" : r < 0.8 ? prefer(d, "remote", "keep") : "keep";
+    case "new_field":
+      return r < 0.35 ? "switch" : r < 0.6 ? "inside" : r < 0.8 ? "side" : "stay";
+    case "childcare":
+      if (dev(s) < 0.5) return prefer(d, "grand", "partner");
+      return r < 0.35 ? "paid" : r < 0.6 ? "partner" : r < 0.85 ? prefer(d, "grand", "paid") : prefer(d, "you", "paid");
     case "migration":
       return r < 0.2 ? "go" : "stay";
     case "war":
@@ -279,6 +339,14 @@ export const steady: Chooser = (s, d) => {
       return "no";
     case "romance_scam":
       return "block";
+    case "cosign_default":
+      return liquid(s) >= Number(d.payload.owed ?? 0) ? "pay" : "spread";
+    case "ponzi_more":
+      return "out";
+    case "card_debt":
+      return prefer(d, "clear", "loan", "min");
+    case "startup_exit":
+      return "cash";
     default:
       return typical(s, d);
   }

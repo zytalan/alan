@@ -23,22 +23,44 @@ how much was you.
 
 ## Decisions
 
-An adult life meets about 55 decisions, drawn from 97 kinds, and almost all have three
+An adult life meets about 55 decisions, drawn from 112 kinds, and almost all have three
 or four ways to answer. Some arrive on cue: what you do after school, a first job, where
 your first savings go, looking back at 30, 50 and 70. The rest come by chance. The order
 is shuffled every year so no event crowds out the others. Career, family and health
 events always get their turn, other chance events are held to one or two a year, and the
 ones that tend to recur come back less often each time (a second lottery rollover is less
-likely than the first). Frequent events change their wording: a layoff has a reason, a
-promotion a new title, and a crash says how many you've lived through and what you did
-last time.
+likely than the first).
+
+A decision that comes back asks something new. The first promotion is a raise; the next
+is a senior role you can take on your terms or swap for training; then your boss leaves
+and a colleague you like wants the job too; then the top job, which you can share or turn
+down to train the next one. A manager's job can be led while you keep doing the work, and
+an executive can take part of the salary in shares that pay out if the company is ever
+bought. An illness you skipped or treated on the cheap can come back worse; an injury
+offers surgery or rest, a chronic disease medication for good, a grave one the choice to
+spend the money on living instead. A second layoff offers a safer job or early retirement,
+a third a move to where the jobs are. A second baby raises space and childcare, and a
+younger child's university is measured against what the older one got. A second debt
+crisis can't end in another bankruptcy within eight years, love after a marriage ends can
+come with a prenup, and crashes and booms remember what you did last time.
+
+Choices also come back as new decisions, one to nine years on, in place of that year's
+chance event. The friend whose loan you co-signed stops paying. A sibling can't repay you.
+The startup whose shares you hold is bought: take cash, the buyer's shares, or back the
+founders again. A tenant stops paying, a patched roof fails again, or a flat bought at the
+top of a boom ends up worth less than its mortgage (in the US you can hand back the keys).
+A side job grows into a business. A parent you care for gets worse, a care home raises its
+fees, or the siblings who did the caring can't cope. A child wants to drop out of
+university. A pet falls ill. A Ponzi scheme asks you to bring in your friends. The card you
+filled up is still full. Builders find rot in the flat you're renovating. An emigrant gets
+homesick, a weekly commuter's family wants them home, and night classes end with an offer
+in a new field.
 
 Many choices last. A pet, car payments, a gym, cigarettes, overtime, app work, a
-side job, part-time work, an employer's pension match, a lodger or money sent home
-become yearly income or costs, in typical wages so they keep up with prices, until they
-end. The ones tied to a job stop when the job does. Others settle later: a flat you
-renovate sells two years on, a loan you co-signed may fall to you, a friend may pay you
-back.
+side job, part-time work, childcare, an employer's pension match, a lodger or money sent
+home become yearly income or costs, in typical wages so they keep up with prices, until
+they end. The ones tied to a job stop when the job does. Others settle later: a flat you
+renovate sells two years on, and a friend may pay you back.
 
 Some decisions belong to a place and a time: a savings circle under its local name (a
 susu in Ghana, a chama in Kenya, a tanda in Mexico, an arisan in Indonesia, a hui in
@@ -117,8 +139,10 @@ Money moves between generations too. When a parent can't live alone any more you
 for a care home (their savings first, then the state's share where there is one, then
 you and your siblings), move them in with you (a carer by day costs a quarter as much,
 and you work a little less), look after them yourself for less pay, or leave it to your
-siblings, who then get more of the estate. Grown children may ask for help with a first
-home. The statement adds up what you inherited, paid for care, gave and left, and what
+siblings, who then get more of the estate. As they decline the arrangement comes up again:
+a live-in carer costs 60% of a care home, fees rise, and siblings can ask you to take
+your turn or send money (which wins back part of your share). Grown children may ask for
+help with a first home. The statement adds up what you inherited, paid for care, gave and left, and what
 each child gets in years of a typical wage. It also draws your life as a picture to
 save or share: the coin, your peak wealth, the grade, the strip and the life's code.
 

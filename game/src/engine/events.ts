@@ -12,8 +12,8 @@ import { econ, type YearEcon } from "./macro";
 import { referenceHealth } from "./mortality";
 import { liquidateDesk, shrinkDesk } from "./desk";
 import {
-  addDue, adult, annuity, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, commit, consumerRate, dev, ec,
-  eduAtLeast, endBusiness,
+  addDue, adult, annuity, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, commit, commitments, consumerRate, dev, ec,
+  eduAtLeast, endBusiness, endCommitment, followUp,
   fmt, homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay, raiseCash,
   rebalance, retirementAge, salary, sellProperty, startBusiness, stockValue, takeJob, W, type Offer,
 } from "./ops";
@@ -21,7 +21,7 @@ import { stream, type Rng } from "./rng";
 import { admissionChance, startSchool, tuitionPerYear, universityClosed } from "./school";
 import {
   ASSET_KEYS, type Allocation, type AssetKey, type BizType, type Decision, type DecisionOption, type Edu, type Field,
-  type LifeState,
+  type LifeState, type Stock,
 } from "./types";
 import { country, countryIn, countryIsos, devLevel, nearest } from "./world";
 
@@ -47,6 +47,7 @@ export interface EventDef {
   cooldown?: number;
   repeats?: number; // the chance shrinks by this factor each time it has come up before
   core?: boolean; // drives a career, a family or health: never crowded out by the yearly limit
+  followUp?: boolean; // only comes back after an earlier choice, in place of a chance event that year
   chance?(s: LifeState, c: EventCtx): number;
   build(s: LifeState, c: EventCtx, payload: Record<string, unknown>): Built | null;
   resolve(s: LifeState, c: EventCtx, payload: Record<string, unknown>, option: string): void;
@@ -136,6 +137,10 @@ function moneyYears(s: LifeState, amount: number): string {
   return yrs >= 1 ? `${yrs.toFixed(yrs < 10 ? 1 : 0)} years of a typical wage here` : `${Math.round(yrs * 12)} months of a typical wage here`;
 }
 
+function upperFirst(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
 /** "an accountant", "a nurse" */
 function aTitle(title: string): string {
   const t = title.toLowerCase();
@@ -207,24 +212,25 @@ export function moveCountry(s: LifeState, dest: string, lossShare = 0): void {
   syncAllocation(s);
 }
 
-// what you might be diagnosed with: name, how serious, and the age it starts to show up
-const CONDITIONS: [string, number, number][] = [
-  ["a slipped disc", 1, 25],
-  ["pneumonia", 1, 18],
-  ["a bad fracture", 1, 18],
-  ["appendicitis", 0.8, 18],
-  ["a torn knee ligament", 0.8, 18],
-  ["depression", 1.2, 18],
-  ["asthma", 0.8, 18],
-  ["kidney stones", 0.8, 25],
-  ["diabetes", 1.5, 35],
-  ["high blood pressure", 1, 35],
-  ["a heart condition", 2.5, 45],
-  ["a tumour", 3, 40],
-  ["kidney disease", 2, 45],
-  ["a stroke", 3, 55],
-  ["cataracts", 0.8, 60],
-  ["a broken hip", 1.5, 65],
+// what you might be diagnosed with: name, how serious, the age it starts to show up, and what kind of illness it is
+type IllKind = "injury" | "acute" | "chronic" | "grave";
+const CONDITIONS: [string, number, number, IllKind][] = [
+  ["a slipped disc", 1, 25, "injury"],
+  ["pneumonia", 1, 18, "acute"],
+  ["a bad fracture", 1, 18, "injury"],
+  ["appendicitis", 0.8, 18, "acute"],
+  ["a torn knee ligament", 0.8, 18, "injury"],
+  ["depression", 1.2, 18, "chronic"],
+  ["asthma", 0.8, 18, "chronic"],
+  ["kidney stones", 0.8, 25, "acute"],
+  ["diabetes", 1.5, 35, "chronic"],
+  ["high blood pressure", 1, 35, "chronic"],
+  ["a heart condition", 2.5, 45, "chronic"],
+  ["a tumour", 3, 40, "grave"],
+  ["kidney disease", 2, 45, "chronic"],
+  ["a stroke", 3, 55, "grave"],
+  ["cataracts", 0.8, 60, "injury"],
+  ["a broken hip", 1.5, 65, "injury"],
 ];
 
 // what a rotating savings circle is called where it's common
@@ -252,6 +258,28 @@ const HUSTLES: { id: string; label: (s: LifeState) => string; hint: string; wage
   { id: "bar", label: () => "Bar shifts on Friday and Saturday nights", hint: "The tips are good", wage: 0.12, happiness: -1, network: 2, ok: (s) => s.age <= 40 },
   { id: "freelance", label: () => "Freelance design and websites", hint: "Clients come and go", wage: 0.2, ok: (s) => s.year >= 2000 && s.stats.skill >= 55 },
 ];
+
+/** A flat you've just bought to let: tenants and repairs may call. A boom buy is checked once prices have moved. */
+function watchRental(s: LifeState, r: Rng, boom = false): void {
+  const flat = s.properties[s.properties.length - 1];
+  if (!flat || flat.kind !== "rental" || flat.personal) return;
+  if (boom) followUp(s, "rental_trouble", r.int(2, 3), { id: flat.id, boom: true });
+  else if (r.chance(0.6)) followUp(s, "rental_trouble", r.int(1, 4), { id: flat.id });
+}
+
+/** What you did when an older child went to university, by the choice you made. */
+const COLLEGE_DID: Record<string, string> = {
+  pay: "paid for all of it",
+  half: "paid half",
+  local: "paid for a university near home",
+  loans: "left it to student loans",
+  no: "told them to get a job",
+};
+
+/** The business a side hustle grows into. */
+const HUSTLE_BIZ: Record<string, BizType> = {
+  tutor: "agency", drive: "agency", market: "shop", online: "trading", repair: "workshop", deliver: "agency", translate: "agency", bar: "shop", freelance: "agency",
+};
 
 const DEFS: EventDef[] = [
   // ------------------------------------------------------------- childhood
@@ -644,7 +672,8 @@ const DEFS: EventDef[] = [
     id: "first_job",
     tag: "career",
     build: (s, c, p) => {
-      const offers = makeOffers(s, c.r, 3);
+      // a year spent looking turns up better offers
+      const offers = makeOffers(s, c.r, s.flags.searching === s.year ? 5 : 3).slice(0, 3);
       if (!offers.length) offers.push({ occ: "laborer", title: "Day laborer", mult: 0.45, employer: "the market" });
       return {
         title: p.title ? String(p.title) : s.job ? "Job hunting" : "Your first job",
@@ -689,14 +718,24 @@ const DEFS: EventDef[] = [
         ["An old colleague calls", `An old colleague, now at ${of.employer}, wants you there as ${aTitle(of.title)}`],
         ["A recruiter's message", `A recruiter has a post for ${aTitle(of.title)} at ${of.employer}`],
       ]);
+      // after the first offer, what you can ask for depends on the offer and the times
+      const seen = Number(s.flags["n:job_offer"] ?? 0);
+      const ask =
+        seen === 0
+          ? o("haggle", "Negotiate for more", "Could go either way")
+          : raise >= 0.25
+            ? o("bonus", "Take it, if they add a signing bonus", "They might say no")
+            : s.year >= 2010
+              ? o("remote", "Take it, if you can work from home", "A little less pay, a lot more life")
+              : o("haggle", "Negotiate for more", "Could go either way");
       return {
         title,
         body: `${lead}: ${fmt(s, of.mult * c.w)} a year (${signedPct(raise)}).`,
         options: [
           o("take", "Take it"),
-          o("haggle", "Negotiate for more", "Could go either way"),
+          ask,
           o("counter", "Ask your boss to match it", "A raise, or a cold shoulder"),
-          o("stay", "Stay where you are"),
+          o("stay", seen > 0 && cur.years < 2 ? "Stay, you've only just started" : "Stay where you are"),
         ],
         payload: { of },
       };
@@ -715,6 +754,22 @@ const DEFS: EventDef[] = [
           takeJob(s, of);
           log(s, "They won't budge, but you take it anyway.", "neutral");
         } else log(s, "They withdraw the offer.", "bad");
+      } else if (opt === "bonus") {
+        const roll = c.r.next();
+        if (roll < 0.6) {
+          takeJob(s, of);
+          const bonus = 0.2 * of.mult * W(s);
+          invest(s, bonus);
+          log(s, `You take the job, with a ${fmt(s, bonus)} signing bonus.`, "good");
+        } else if (roll < 0.85) {
+          takeJob(s, of);
+          log(s, "No bonus, but you take the job anyway.", "neutral");
+        } else log(s, "They find someone cheaper.", "bad");
+      } else if (opt === "remote") {
+        takeJob(s, { ...of, mult: of.mult * 0.95 });
+        bump(s, "happiness", 3);
+        bump(s, "health", 1);
+        log(s, `You switch jobs, and work from home: ${of.title.toLowerCase()} at ${of.employer}.`, "good");
       } else if (opt === "counter" && s.job) {
         const roll = c.r.next();
         if (roll < 0.45) {
@@ -749,16 +804,38 @@ const DEFS: EventDef[] = [
             s.year >= 1985 ? "Your work is moving to a cheaper country." : "The business loses its biggest customer.",
             s.year >= 1990 ? "New software does most of your job now." : "New machines do most of your job now.",
           ]);
+      const before = Number(s.flags["n:layoff"] ?? 0);
+      const sevLine = sev > 0 ? ` Severance: ${fmt(s, sev)}.` : "";
+      if (before === 0) {
+        return {
+          title: c.r.pick(["Laid off", "Out of a job", "The end of a job"]),
+          body: `${why} You lose your job as ${aTitle(s.job!.title)}.${sevLine}`,
+          options: [
+            o("quick", "Take the first job you can find", "Lower pay"),
+            o("search", "Search properly", "A year without pay, better offers"),
+            o("study", "Go back to school", s.age > 45 ? undefined : "Retrain", s.age > 45 && "Too late for that"),
+            o("biz", "Start a business", sev > 0 ? "Use the severance" : "Start small, with what you have"),
+          ],
+          payload: { sev },
+        };
+      }
+      // laid off before: the choices are about not going through it again
+      const safe = makeOffers(s, c.r, 6).find((x) => OCC[x.occ].layoff <= 0.01 && OCC[x.occ].formal);
+      const safeMult = safe ? Math.min(safe.mult, s.job!.mult * 0.85) : 0;
       return {
-        title: c.r.pick(["Laid off", "Out of a job", "The end of a job"]),
-        body: `${why} You lose your job as ${aTitle(s.job!.title)}.${sev > 0 ? ` Severance: ${fmt(s, sev)}.` : ""}`,
+        title: c.r.pick(["Laid off again", "Another layoff", "Here we go again"]),
+        body: `${why} You lose your job as ${aTitle(s.job!.title)}, ${before === 1 ? "the second time this has happened to you" : `${before + 1} times now`}.${sevLine}`,
         options: [
           o("quick", "Take the first job you can find", "Lower pay"),
-          o("search", "Search properly", "A year without pay, better offers"),
-          o("study", "Go back to school", s.age > 45 ? undefined : "Retrain", s.age > 45 && "Too late for that"),
-          o("biz", "Start a business", sev > 0 ? "Use the severance" : "Start small, with what you have"),
+          o("safe", safe ? `Become ${aTitle(safe.title.toLowerCase())}` : "Find something safer", safe ? `${fmt(s, safeMult * c.w)} a year, and jobs like it rarely go` : undefined, !safe && "Nothing safer is hiring people like you"),
+          s.age >= 55
+            ? o("early", s.age >= retirementAge(s) ? "Retire" : "Retire early", s.age >= retirementAge(s) ? "Your pension, starting now" : "A smaller pension, starting now")
+            : o("study", "Retrain for a growing field", s.age > 45 ? undefined : "Back to school", s.age > 45 && "Too late for that"),
+          before >= 2
+            ? o("move", "Move to where the jobs are", `${fmt(s, 0.1 * c.w)} to move, and you start again socially`)
+            : o("biz", "Work for yourself from now on", sev > 0 ? "Use the severance to start a business" : "Start a business, small"),
         ],
-        payload: { sev },
+        payload: { sev, safe: safe ? { ...safe, mult: safeMult } : null },
       };
     },
     resolve: (s, c, p, opt) => {
@@ -775,6 +852,24 @@ const DEFS: EventDef[] = [
           takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 0.9) });
           log(s, `You take a job as ${aTitle(of.title)}.`, "neutral");
         }
+      } else if (opt === "safe" && p.safe) {
+        const of = p.safe as Offer;
+        takeJob(s, of);
+        log(s, `You take a steadier job as ${aTitle(of.title)}.`, "neutral");
+      } else if (opt === "move") {
+        const of = makeOffers(s, c.r, 3)[0];
+        pay(s, 0.1 * W(s));
+        bump(s, "network", -6);
+        bump(s, "happiness", -3);
+        if (of) {
+          takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 1.05) });
+          log(s, `You move across the country for a job as ${aTitle(of.title)}.`, "milestone");
+        }
+      } else if (opt === "early") {
+        const early = s.age < retirementAge(s);
+        s.pension = pensionFor(s) * (early ? 0.8 : 1);
+        s.retired = true;
+        log(s, early ? `You retire early, at ${s.age}.` : `You retire at ${s.age}.`, "milestone");
       } else if (opt === "search") s.flags.searching = s.year + 1;
       else if (opt === "study") enqueue(s, "grad_next");
       else enqueue(s, "start_business");
@@ -795,6 +890,45 @@ const DEFS: EventDef[] = [
       const premium = occ.pay > 1 ? 1 + (occ.pay - 1) * (1 + 0.6 * (1 - dev(s))) : occ.pay;
       const ceiling = premium * (1 + occ.growth) ** occ.peak * 1.35;
       if (!toManager && !toExec && j.mult >= ceiling) return null;
+      const base = { occ: j.occ, title: j.title, from: j.occ, since: s.year - j.years };
+      // the same work a rung higher: each offer in a job asks something different
+      const stage = toManager || toExec ? 0 : Math.min(3, Number(s.flags["n:promotion"] ?? 0));
+      if (stage === 1) {
+        const mult = Math.min(ceiling, j.mult * c.r.range(1.06, 1.12));
+        return {
+          title: c.r.pick(["A senior role", "More responsibility"]),
+          body: `They want you in a senior role: ${fmt(s, mult * c.w)} a year, and you'd answer for other people's work as well as your own.`,
+          options: [
+            o("yes", "Take it", `${signedPct(mult / j.mult - 1)} pay, longer hours`),
+            o("flex", s.year >= 2005 ? "Take it, if you can work from home two days a week" : "Take it, if you can keep shorter hours", "Half the raise, more of your life"),
+            o("train", "Ask for training instead of the raise", "Skills you can take anywhere"),
+            o("no", "Decline", "Keep your evenings"),
+          ],
+          payload: { ...base, mult, stage },
+        };
+      }
+      if (stage === 2) {
+        const mult = Math.min(ceiling * 1.1, j.mult * c.r.range(1.15, 1.25));
+        return {
+          title: "Your boss is leaving",
+          body: `Your boss is moving on, and the job is open: ${fmt(s, mult * c.w)} a year. A colleague you like wants it too.`,
+          options: [o("apply", "Go for it", "You might get it. You might not"), o("back", "Back your colleague for it", "A friend in a high place"), o("stay", "Stay out of it")],
+          payload: { ...base, mult, stage },
+        };
+      }
+      if (stage === 3) {
+        const mult = Math.min(ceiling * 1.15, j.mult * 1.2);
+        return {
+          title: "The top of the ladder",
+          body: `They want you to run the whole department: ${fmt(s, mult * c.w)} a year, and everything that goes wrong is yours.`,
+          options: [
+            o("run", "Take it", "The pay, and the pressure"),
+            o("share", "Share it with a colleague", "A smaller raise, half the weight"),
+            o("mentor", "Turn it down, and train the next one", "Respect, and your evenings"),
+          ],
+          payload: { ...base, mult, stage },
+        };
+      }
       const mult = toExec ? Math.max(j.mult * 1.4, 3.5) : toManager ? Math.max(j.mult * 1.2, mgr.pay) : Math.min(ceiling, j.mult * c.r.range(1.05, 1.12));
       const title = toExec ? "Executive" : toManager ? "Manager" : j.title;
       const step = toManager || toExec ? `a job as ${aTitle(title)}` : "a step up";
@@ -804,21 +938,71 @@ const DEFS: EventDef[] = [
         `Head office has noticed your work. They offer you ${step}`,
         `After a strong year, you're offered ${step}`,
       ]);
+      const raise = `${signedPct(mult / j.mult - 1)} pay`;
       return {
         title: toExec ? "The corner office" : toManager ? "Leading a team" : c.r.pick(["A promotion", "A step up", "Moving up"]),
         body: `${why}: ${fmt(s, mult * c.w)} a year, longer hours.`,
-        options: [
-          o("yes", "Accept", `${signedPct(mult / j.mult - 1)} pay`),
-          o("more", "Accept, but ask for more", "Often works. Sometimes the job goes to someone else"),
-          o("no", "Decline", "Keep your evenings"),
-        ],
-        payload: { mult, occ: toExec ? "executive" : toManager ? "manager" : j.occ, title, from: j.occ, since: s.year - j.years },
+        options: toExec
+          ? [o("yes", "Take the corner office", raise), o("equity", "Take less salary, for shares in the company", "A tenth less pay, and a stake if it's ever sold"), o("no", "Decline", "Keep your life")]
+          : toManager
+            ? [o("yes", "Lead the team", raise), o("coach", "Lead it, and keep doing the work yourself", "Half the raise, and you stay sharp"), o("no", "Stay a specialist", "Get better at what you do")]
+            : [
+                o("yes", "Accept", raise),
+                o("more", "Accept, but ask for more", "Often works. Sometimes the job goes to someone else"),
+                o("no", "Decline", "Keep your evenings"),
+              ],
+        payload: { mult, occ: toExec ? "executive" : toManager ? "manager" : j.occ, title, from: j.occ, since: s.year - j.years, stage },
       };
     },
     resolve: (s, c, p, opt) => {
-      if (opt === "no" || !s.job) return;
-      if (s.job.occ !== p.from || s.year - s.job.years !== p.since) return; // you changed jobs in the meantime
+      if (!s.job || s.job.occ !== p.from || s.year - s.job.years !== p.since) return; // you changed jobs in the meantime
+      const job = s.job;
+      if (opt === "no" || opt === "stay") {
+        if (p.occ !== job.occ) bump(s, "skill", 2); // staying a specialist
+        return;
+      }
       let mult = Number(p.mult);
+      if (opt === "train") {
+        job.mult *= 1.02;
+        bump(s, "skill", 6);
+        log(s, "You take the training instead of the raise.", "good");
+        return;
+      }
+      if (opt === "back") {
+        bump(s, "network", 6);
+        if (c.r.chance(0.35)) job.mult *= 1.05;
+        log(s, "Your colleague gets the job, and remembers who backed them.", "good");
+        return;
+      }
+      if (opt === "mentor") {
+        job.level = 4;
+        bump(s, "network", 6);
+        bump(s, "happiness", 3);
+        log(s, "You turn down the top job and train the person who takes it.", "good");
+        return;
+      }
+      if (opt === "apply" && !c.r.chance(0.55)) {
+        bump(s, "happiness", -3);
+        log(s, "The job goes to your colleague.", "bad");
+        return;
+      }
+      if (opt === "flex") {
+        mult = job.mult + (mult - job.mult) / 2;
+        bump(s, "happiness", 4);
+        bump(s, "health", 2);
+      }
+      if (opt === "share") mult = job.mult * 1.08;
+      if (opt === "run") commit(s, { key: "pressure", label: "Running the department", wage: 0, until: s.year + 4, needsJob: true, health: -1, happiness: -1 });
+      if (opt === "coach") {
+        mult = job.mult + (mult - job.mult) / 2;
+        bump(s, "skill", 2);
+      }
+      if (opt === "equity") {
+        mult *= 0.9;
+        const st = makeStock(s, c.r, true);
+        Object.assign(st, { name: "Your company", sector: "Your employer", value: W(s), cost: W(s), beta: 0.8, drift: 0.03, vol: 0.35, hazard: 0.02, exitYear: s.year + c.r.int(5, 8) });
+        s.stocks.push(st);
+      }
       if (opt === "more") {
         if (c.r.chance(0.25)) {
           bump(s, "happiness", -3);
@@ -827,15 +1011,23 @@ const DEFS: EventDef[] = [
         }
         if (c.r.chance(0.6)) mult *= 1.06;
       }
-      s.job.mult = mult;
-      s.job.level++;
-      if (p.occ !== s.job.occ) {
-        s.job.occ = String(p.occ);
-        s.job.title = String(p.title);
+      job.mult = mult;
+      job.level = opt === "run" || opt === "share" ? 4 : job.level + 1; // the top of the ladder is as high as this job goes
+      if (p.occ !== job.occ) {
+        job.occ = String(p.occ);
+        job.title = String(p.title);
         s.flags.pastJobs = `${s.flags.pastJobs ?? ""},${p.occ}`;
       }
       bump(s, "happiness", 3);
-      log(s, p.occ === p.from ? "You're promoted." : `Promoted — you're now ${s.job.title.toLowerCase()}.`, "good");
+      const done: Record<string, string> = {
+        coach: "You lead the team and keep your hand in the work.",
+        equity: "You take the corner office, and shares instead of part of the salary.",
+        flex: "You take the senior role, on your terms.",
+        apply: "You get your boss's job.",
+        run: "You take charge of the department.",
+        share: "You and a colleague run the department together.",
+      };
+      log(s, done[opt] ?? (p.occ === p.from ? "You're promoted." : `Promoted — you're now ${job.title.toLowerCase()}.`), "good");
     },
   },
   {
@@ -853,10 +1045,11 @@ const DEFS: EventDef[] = [
         options: [...picks.map((h) => o(h.id, h.label(s), `About ${fmt(s, h.wage * c.w)} a year · ${h.hint}`)), o("no", "Keep your weekends")],
       };
     },
-    resolve: (s, _c, _p, opt) => {
+    resolve: (s, c, _p, opt) => {
       const h = HUSTLES.find((x) => x.id === opt);
       if (!h) return;
       commit(s, { key: "hustle", label: h.label(s), wage: h.wage, until: s.year + 3, health: h.health, happiness: h.happiness });
+      if (c.r.chance(0.45)) followUp(s, "hustle_grows", 2, { id: h.id });
       if (h.skill) bump(s, "skill", h.skill);
       if (h.network) bump(s, "network", h.network);
       log(s, `On the side: ${h.label(s).toLowerCase()}.`, "money");
@@ -1051,22 +1244,40 @@ const DEFS: EventDef[] = [
       const cryptoHot = Number(s.flags.lastCrypto ?? 0) > 1 && s.access.crypto;
       return eqHot || cryptoHot ? 0.5 : 0;
     },
-    build: (s) => {
+    build: (s, c) => {
       const cryptoHot = Number(s.flags.lastCrypto ?? 0) > 1 && s.access.crypto;
       const asset: AssetKey = cryptoHot ? "crypto" : "localEq";
       const gain = cryptoHot ? Number(s.flags.lastCrypto) : Number(s.flags.lastEqReal);
+      const last = s.flags.boomLast ? String(s.flags.boomLast) : null;
+      const did: Record<string, string> = {
+        allin: "Last time, you went all in.",
+        trim: "Last time, you took some profits.",
+        steady: "Last time, you stayed the course.",
+        out: "Last time, you sold everything and waited.",
+      };
       return {
-        title: cryptoHot ? "Crypto fever" : "Everyone is getting rich",
-        body: cryptoHot
-          ? `Bitcoin rose ${pct(gain)} last year. A coworker just quit to trade full time.`
-          : `The stock market is up ${pct(gain)} after inflation last year, and the year before. Your barber gives you stock tips.`,
-        options: [o("allin", "Go all in", "80% of your savings"), o("trim", "Take some profits"), o("steady", "Stay the course")],
+        title: last ? c.r.pick(["Another boom", "Here we go again"]) : cryptoHot ? "Crypto fever" : "Everyone is getting rich",
+        body: `${
+          cryptoHot
+            ? `Bitcoin rose ${pct(gain)} last year. A coworker just quit to trade full time.`
+            : `The stock market is up ${pct(gain)} after inflation last year, and the year before. Your barber gives you stock tips.`
+        }${last ? ` ${did[last] ?? ""}` : ""}`,
+        options: [
+          o("allin", "Go all in", "80% of your savings"),
+          o("trim", "Take some profits"),
+          ...(last ? [o("out", "Sell everything and wait for the crash", "If it comes")] : []),
+          o("steady", "Stay the course"),
+        ],
         payload: { asset },
       };
     },
     resolve: (s, _c, p, opt) => {
       const asset = p.asset as AssetKey;
-      if (opt === "allin") {
+      s.flags.boomLast = opt;
+      if (opt === "out") {
+        move(s, asset === "crypto" ? ["crypto"] : ["localEq", "globalEq"], "cash", 1);
+        log(s, "You sell everything and sit in cash, waiting for the crash.", "money");
+      } else if (opt === "allin") {
         const others = ASSET_KEYS.filter((k) => k !== asset);
         move(s, others, asset, 0.8);
         log(s, "You go all in. It feels amazing.", "money");
@@ -1124,6 +1335,7 @@ const DEFS: EventDef[] = [
       const amt = raiseCash(s, liquid(s) * (opt === "lots" ? 0.5 : 0.1));
       s.flags.ponziAmt = amt;
       s.flags.ponziEnd = s.year + c.r.int(1, 3);
+      if (Number(s.flags.ponziEnd) > s.year + 1) followUp(s, "ponzi_more", 1);
       log(s, `You hand over ${fmt(s, amt)}.`, "money");
     },
   },
@@ -1225,10 +1437,11 @@ const DEFS: EventDef[] = [
         payload: { price },
       };
     },
-    resolve: (s, _c, p, opt) => {
+    resolve: (s, c, p, opt) => {
       if (opt === "no") return;
       if (buyProperty(s, opt === "home" ? "home" : "rental", Number(p.price))) {
         if (opt === "home") s.livingWithParents = false;
+        else watchRental(s, c.r);
         log(s, opt === "home" ? `You buy a home for ${fmt(s, Number(p.price))}.` : `You buy a rental property for ${fmt(s, Number(p.price))}.`, "milestone");
       }
     },
@@ -1318,21 +1531,48 @@ const DEFS: EventDef[] = [
     forced: true,
     cooldown: 3,
     chance: (s, c) => (s.consumerDebt > 2.5 * c.w && liquid(s) < s.consumerDebt * 0.2 ? 1 : 0),
-    build: (s) => {
+    build: (s, c) => {
       const legal = dev(s) >= 0.5;
       const family = (s.parents.alive[0] || s.parents.alive[1]) && s.parents.wealthMult > 1;
+      const last = s.flags.debtLast ? { opt: String(s.flags.debtLast), year: Number(s.flags.debtYear) } : null;
+      const home = s.properties.find((x) => x.kind === "home");
+      const tooSoon = last?.opt === "bankrupt" && s.year - last.year < 8;
+      const before: Record<string, string> = {
+        bankrupt: `You went bankrupt in ${last?.year}.`,
+        family: `Your family bailed you out in ${last?.year}.`,
+        plan: `You agreed a repayment plan in ${last?.year}.`,
+        pay: `You've been struggling since ${last?.year}.`,
+        home: `You sold your home to clear your debts in ${last?.year}.`,
+      };
       return {
-        title: "Drowning in debt",
-        body: `You owe ${fmt(s, s.consumerDebt)} at ${pct(consumerRate(s))} interest. ${moneyYears(s, s.consumerDebt)}.`,
+        title: last ? c.r.pick(["Drowning again", "Back in the red"]) : "Drowning in debt",
+        body: `You owe ${fmt(s, s.consumerDebt)} at ${pct(consumerRate(s))} interest. ${moneyYears(s, s.consumerDebt)}.${last ? ` ${before[last.opt] ?? ""}` : ""}`,
         options: [
-          o("bankrupt", legal ? "Declare bankruptcy" : "Default and disappear for a while", legal ? "Debts wiped, credit locked for 7 years" : "The lenders won't forget"),
-          o("family", "Ask your family for help", undefined, !family && "They can't help"),
+          o("bankrupt", legal ? "Declare bankruptcy" : "Default and disappear for a while", legal ? "Debts wiped, credit locked for 7 years" : "The lenders won't forget", tooSoon && "Too soon after your last bankruptcy"),
+          o("family", last?.opt === "family" ? "Ask your family again" : "Ask your family for help", last?.opt === "family" ? "They helped once. They may not again" : undefined, !family && "They can't help"),
+          ...(last && home ? [o("home", "Sell your home to clear it", "Debt-free, and renting")] : []),
           o("plan", "Agree a repayment plan", "A fifth written off, credit locked for 3 years"),
           o("pay", "Keep paying"),
         ],
+        payload: { again: last?.opt === "family" },
       };
     },
-    resolve: (s, _c, _p, opt) => {
+    resolve: (s, c, p, opt) => {
+      s.flags.debtLast = opt;
+      s.flags.debtYear = s.year;
+      if (opt === "family" && p.again && c.r.chance(0.5)) {
+        bump(s, "network", -4);
+        log(s, "Your family says no this time.", "bad");
+        return;
+      }
+      if (opt === "home") {
+        const home = s.properties.find((x) => x.kind === "home");
+        if (home) sellProperty(s, home.id);
+        s.consumerDebt -= raiseCash(s, s.consumerDebt);
+        bump(s, "happiness", -6);
+        log(s, "You sell your home to clear your debts.", "bad");
+        return;
+      }
       if (opt === "bankrupt") {
         const legal = dev(s) >= 0.5;
         liquidateDesk(s, "The trading account is closed in the bankruptcy");
@@ -1374,15 +1614,23 @@ const DEFS: EventDef[] = [
         "on a long train journey",
         "at a neighbour's party",
       ]);
+      const again = Boolean(s.flags.wasMarried);
       return {
-        title: c.r.pick(["Someone new", "A spark", "A first date"]),
-        body: `You meet ${name} ${where}. There's a spark.`,
-        options: [o("yes", "See where it goes"), o("slow", "Keep it slow", "No rush to settle down"), o("no", "Not now — focus on yourself")],
+        title: again ? c.r.pick(["Love, again?", "A second chance"]) : c.r.pick(["Someone new", "A spark", "A first date"]),
+        body: `You meet ${name} ${where}. There's a spark.${again ? " After last time, you're more careful." : ""}`,
+        options: [
+          o("yes", "See where it goes"),
+          o("slow", "Keep it slow", "No rush to settle down"),
+          ...(again ? [o("prenup", "See where it goes, but with a prenup if it gets serious", "Protects what you have. Not very romantic")] : []),
+          o("no", "Not now — focus on yourself"),
+        ],
         payload: { name },
       };
     },
     resolve: (s, _c, p, opt) => {
-      if (opt === "yes" || opt === "slow") {
+      if (opt === "yes" || opt === "slow" || opt === "prenup") {
+        if (opt === "prenup") s.flags.prenup = true;
+        else delete s.flags.prenup;
         s.dating = true;
         s.flags.datingName = String(p.name);
         s.flags.datingSince = s.year;
@@ -1398,7 +1646,7 @@ const DEFS: EventDef[] = [
     chance: (s) => (s.dating && s.year - Number(s.flags.datingSince ?? s.year) >= (s.flags.datingSlow ? 3 : 1) ? 0.5 : 0),
     build: (s, c) => ({
       title: "Marriage?",
-      body: `${s.flags.datingName} wants to get married.`,
+      body: `${s.flags.datingName} wants to get married.${s.flags.prenup ? " You'll both sign a prenup first." : ""}`,
       options: [o("small", "A small wedding", fmt(s, 0.25 * c.w)), o("big", "A big wedding", `${fmt(s, 1.2 * c.w)} — the whole town comes`), o("wait", "Not ready yet")],
     }),
     resolve: (s, c, _p, opt) => {
@@ -1421,6 +1669,7 @@ const DEFS: EventDef[] = [
       s.partner = { name: String(s.flags.datingName), edu: pEdu, mult: base[pEdu] * Math.exp(c.r.normal(0, 0.35)), working: c.r.chance(lfp), since: s.year };
       s.dating = false;
       delete s.flags.datingSlow;
+      s.flags.wasMarried = true;
       s.livingWithParents = false;
       bump(s, "happiness", opt === "big" ? 9 : 6);
       if (opt === "big") bump(s, "network", 5);
@@ -1437,15 +1686,25 @@ const DEFS: EventDef[] = [
       const tfr = nearest(s.country, "tfr", s.year) ?? 2.5;
       return clamp(tfr * 0.07, 0.03, 0.4) * (s.kids.length >= 2 ? 0.5 : 1);
     },
-    build: (s, c) => ({
-      title: s.kids.length ? c.r.pick(["Another child?", "A bigger family?"]) : c.r.pick(["A baby?", "Starting a family"]),
-      body: `${s.kids.length ? `You have ${s.kids.length === 1 ? "one child" : `${s.kids.length} children`}. ` : `You and ${s.partner!.name} talk about children. `}Each child costs about ${fmt(s, 0.2 * c.w)} a year until they leave home.`,
-      options: [o("yes", "Yes"), o("later", "In a couple of years"), o("never", s.kids.length ? "Our family is complete" : "We don't want children")],
-    }),
+    build: (s, c) => {
+      const n = s.kids.length;
+      const roomy = commitments(s).some((x) => x.key === "space");
+      return {
+        title: n ? c.r.pick(["Another child?", "A bigger family?"]) : c.r.pick(["A baby?", "Starting a family"]),
+        body: `${n ? `You have ${n === 1 ? "one child" : `${n} children`}${n >= 2 && !roomy ? ", and the place already feels small" : ""}. ` : `You and ${s.partner!.name} talk about children. `}Each child costs about ${fmt(s, 0.2 * c.w)} a year until they leave home.`,
+        options: [
+          o("yes", n && !roomy ? "Yes, and squeeze in" : "Yes"),
+          ...(n && !roomy ? [o("bigger", "Yes, and move somewhere bigger", `About ${fmt(s, 0.1 * c.w)} a year more for the space`)] : []),
+          o("later", "In a couple of years"),
+          o("never", n ? "Our family is complete" : "We don't want children"),
+        ],
+      };
+    },
     resolve: (s, c, _p, opt) => {
       if (opt === "later") s.flags.babyWait = s.year + 2;
       if (opt === "never") s.flags.noMoreKids = true;
-      if (opt !== "yes") return;
+      if (opt !== "yes" && opt !== "bigger") return;
+      if (opt === "bigger") commit(s, { key: "space", label: "A bigger place", wage: -0.1, until: s.year + 20, happiness: 1 });
       const sex = c.r.chance(0.51) ? "M" : "F";
       const names = familyNames(s, "kids");
       let name = givenName(names, sex, c.r);
@@ -1453,6 +1712,8 @@ const DEFS: EventDef[] = [
       s.kids.push({ name, born: s.year, sex });
       bump(s, "happiness", 6);
       log(s, `${name} is born.`, "milestone");
+      // two small children and two jobs: who looks after them?
+      if (s.kids.length === 2 && s.partner?.working && (s.job || s.business)) enqueue(s, "childcare", { name });
     },
   },
   {
@@ -1467,7 +1728,7 @@ const DEFS: EventDef[] = [
     },
     build: (s) => ({
       title: "It's over",
-      body: `You and ${s.partner!.name} are splitting up. Your net worth is ${fmt(s, netWorth(s))}.`,
+      body: `You and ${s.partner!.name} are splitting up. Your net worth is ${fmt(s, netWorth(s))}.${s.flags.prenup ? " Your prenup protects most of it." : ""}`,
       options: [
         o("split", "Split everything evenly"),
         o("mediate", "Go to a mediator", `${fmt(s, 0.08 * W(s))}, a calmer deal`),
@@ -1485,6 +1746,9 @@ const DEFS: EventDef[] = [
         pay(s, 0.4 * W(s));
         share = c.r.chance(0.5) ? 0.35 : 0.6;
       }
+      if (s.flags.prenup) share *= 0.4;
+      delete s.flags.prenup;
+      delete s.flags.partnerBack;
       giveAway(s, share);
       log(s, `You divorce ${s.partner!.name}. They leave with ${pct(share)} of what you had.`, "bad");
       s.partner = null;
@@ -1497,26 +1761,72 @@ const DEFS: EventDef[] = [
     core: true,
     chance: (s) => (s.age >= 18 ? (0.012 + 0.0012 * Math.max(0, s.age - 30)) * clamp(1 + (referenceHealth(s.age) - s.stats.health) / 40, 0.4, 3) : 0),
     build: (s, c) => {
-      const [name, severity] = c.r.pick(CONDITIONS.filter(([, , from]) => s.age >= from));
+      // what happened last time shapes this time: an illness skimped on can come back worse; one treated well is caught early
+      const last = s.flags.illName ? { name: String(s.flags.illName), opt: String(s.flags.illOpt), year: Number(s.flags.illYear) } : null;
+      const back = last && (last.opt === "skip" || last.opt === "basic") && s.year - last.year <= 8 && c.r.chance(0.45) ? CONDITIONS.find(([n]) => n === last.name) : undefined;
+      const [name, sev0, , kind] = back ?? c.r.pick(CONDITIONS.filter(([, , from]) => s.age >= from));
+      const early = !back && (last?.opt === "best" || last?.opt === "abroad");
+      const severity = sev0 * (back ? 1.5 : early ? 0.8 : 1);
       const oop = (country(s.country).oop ?? 40) / 100;
       const cost = c.w * severity * 1.2 * oop * (s.flags.insured ? 0.25 : s.flags.insuredBasic ? 0.6 : 1);
-      const abroad = dev(s) >= 0.75 && cost >= 0.4 * c.w;
+      const yearly = Math.max(0.01 * c.w, cost * 0.08);
+      const abroad = !back && dev(s) >= 0.75 && cost >= 0.4 * c.w;
       return {
-        title: c.r.pick(["Bad news from the doctor", "Test results", "A hospital visit"]),
-        body: `You're diagnosed with ${name}. The best treatment will cost you ${fmt(s, cost)} out of pocket.`,
-        options: [
-          o("best", "Get the best treatment", fmt(s, cost)),
-          o("basic", "Basic treatment", fmt(s, cost * 0.3)),
-          ...(abroad ? [o("abroad", "Get treated abroad", `${fmt(s, cost * 0.45)} and a long trip`)] : []),
-          o("skip", "Skip it and hope", "Free"),
-        ],
-        payload: { cost, severity, name },
+        title: back ? "It's back" : c.r.pick(["Bad news from the doctor", "Test results", "A hospital visit"]),
+        body: back
+          ? `The ${name} you ${last!.opt === "skip" ? "never had treated" : "treated on the cheap"} in ${last!.year} has come back, worse. Full treatment now costs ${fmt(s, cost)} out of pocket.`
+          : `${early ? `The doctors who treated you in ${last!.year} keep an eye on you, and catch it early: ` : "You're diagnosed with "}${name}. The best treatment will cost you ${fmt(s, cost)} out of pocket.`,
+        options: back
+          ? [
+              o("best", "Full treatment, this time", fmt(s, cost)),
+              o("manage", "Manage it with medication", `${fmt(s, yearly)} a year, for good`),
+              o("change", "Change how you live", "Cheap, if you stick to it"),
+              o("skip", "Ignore it again", "Free"),
+            ]
+          : kind === "injury"
+            ? [
+                o("best", "Surgery", fmt(s, cost)),
+                o("rest", "Rest and physiotherapy", `${fmt(s, cost * 0.3)}, and a quarter of this year's pay`),
+                o("skip", "Painkillers, and carry on", "Free"),
+              ]
+            : kind === "acute"
+              ? [o("best", "Hospital, right away", fmt(s, cost)), o("basic", "A local clinic", fmt(s, cost * 0.3)), o("skip", "Wait it out", "Free, and risky")]
+              : kind === "chronic"
+                ? [
+                    o("best", "The best specialists", fmt(s, cost)),
+                    o("manage", "Medication, for good", `${fmt(s, yearly)} a year`),
+                    o("basic", "Basic treatment", fmt(s, cost * 0.3)),
+                    o("skip", "Skip it and hope", "Free"),
+                  ]
+                : [
+                    o("best", "The best treatment, whatever it costs", fmt(s, cost)),
+                    ...(abroad ? [o("abroad", "Get treated abroad", `${fmt(s, cost * 0.45)} and a long trip`)] : []),
+                    o("basic", "Standard treatment", fmt(s, cost * 0.3)),
+                    o("live", "Spend the money on living instead", "Time, not years"),
+                  ],
+        payload: { cost, severity, name, yearly },
       };
     },
     resolve: (s, _c, p, opt) => {
       const cost = Number(p.cost);
       const sev = Number(p.severity);
-      if (opt === "best") {
+      s.flags.illName = String(p.name);
+      s.flags.illOpt = opt;
+      s.flags.illYear = s.year;
+      if (opt === "rest") {
+        pay(s, cost * 0.3);
+        bump(s, "health", -6 * sev);
+        s.flags.incomeCut = Math.max(Number(s.flags.incomeCut ?? 0), 0.25);
+      } else if (opt === "live") {
+        bump(s, "health", -20 * sev);
+        bump(s, "happiness", 12);
+      } else if (opt === "manage") {
+        bump(s, "health", -5 * sev);
+        commit(s, { key: `med:${p.name}`, label: "Medication", wage: -Number(p.yearly) / W(s), until: s.year + 40, health: 1 });
+      } else if (opt === "change") {
+        bump(s, "health", -10 * sev);
+        commit(s, { key: "healthier", label: "A healthier life", wage: -0.01, until: s.year + 5, health: 2, happiness: -1 });
+      } else if (opt === "best") {
         pay(s, cost);
         bump(s, "health", -3 * sev);
       } else if (opt === "abroad") {
@@ -1526,9 +1836,15 @@ const DEFS: EventDef[] = [
       } else if (opt === "basic") {
         pay(s, cost * 0.3);
         bump(s, "health", -8 * sev);
-      } else bump(s, "health", -16 * sev);
+      } else if (opt === "skip") bump(s, "health", -16 * sev);
       bump(s, "happiness", -4);
-      log(s, `You're treated for ${p.name}.`, opt === "skip" ? "bad" : "neutral");
+      const said: Record<string, string> = {
+        manage: `You start medication for ${p.name}.`,
+        change: `You change how you live to keep ${p.name} at bay.`,
+        rest: `You rest and rebuild after ${p.name}.`,
+        live: `You decide to live fully with the time you have.`,
+      };
+      log(s, said[opt] ?? `You're treated for ${p.name}.`, opt === "skip" ? "bad" : "neutral");
     },
   },
   {
@@ -1556,13 +1872,34 @@ const DEFS: EventDef[] = [
     tag: "life",
     cooldown: 6,
     chance: (s) => ((s.parents.alive[0] || s.parents.alive[1]) && s.age >= 28 && s.parents.incomeMult < 1 && dev(s) < 0.8 && Number(s.flags.supportUntil ?? 0) < s.year ? 0.12 : 0),
-    build: () => ({
-      title: "Your parents are getting old",
-      body: "They can't work anymore and they never had savings.",
-      options: [o("yes", "Support them", "About 8% of your income for six years"), o("some", "Send what you can", "About 4% of your income"), o("no", "You can't afford it")],
-    }),
-    resolve: (s, _c, _p, opt) => {
-      if (opt === "yes" || opt === "some") {
+    build: (s) => {
+      const last = s.flags.supportLast ? String(s.flags.supportLast) : null;
+      const did: Record<string, string> = {
+        yes: "For six years you sent them about 8% of your income.",
+        some: "Last time you sent what you could.",
+        share: "Last time you and your siblings shared it.",
+        no: "Last time you couldn't help.",
+      };
+      return {
+        title: last ? "Your parents need help again" : "Your parents are getting old",
+        body: last ? `${did[last] ?? ""} Now they're older, and the money has run out again.` : "They can't work anymore and they never had savings.",
+        options: [
+          o("yes", last === "yes" ? "Keep supporting them" : "Support them", "About 8% of your income for six years"),
+          o("some", "Send what you can", "About 4% of your income"),
+          ...(s.siblings ? [o("share", "Ask your siblings to share it", "Half each, if they agree")] : []),
+          o("no", "You can't afford it"),
+        ],
+      };
+    },
+    resolve: (s, c, _p, opt) => {
+      s.flags.supportLast = opt;
+      if (opt === "share") {
+        const agree = c.r.chance(0.6);
+        s.flags.supportUntil = s.year + 6;
+        s.flags.supportShare = agree ? 0.04 : 0.08;
+        bump(s, "network", agree ? 3 : -2);
+        log(s, agree ? "Your siblings agree to share the cost." : "Your siblings won't help, so it all falls to you.", agree ? "good" : "bad");
+      } else if (opt === "yes" || opt === "some") {
         s.flags.supportUntil = s.year + 6;
         s.flags.supportShare = opt === "some" ? 0.04 : 0.08;
         bump(s, "happiness", 3);
@@ -1603,10 +1940,11 @@ const DEFS: EventDef[] = [
         payload: { i },
       };
     },
-    resolve: (s, _c, p, opt) => {
+    resolve: (s, c, p, opt) => {
       const i = Number(p.i);
       const who = i === 0 ? "mother" : "father";
       s.flags[`care${i}`] = opt;
+      followUp(s, "care_change", c.r.int(2, 3), { i, n: 0 });
       if (opt === "home") log(s, dev(s) >= 0.45 ? `Your ${who} moves into a care home.` : `You pay a carer to look after your ${who}.`, "neutral");
       else if (opt === "together") {
         bump(s, "network", 2);
@@ -1670,7 +2008,7 @@ const DEFS: EventDef[] = [
       } else if (c.r.chance(0.4)) {
         s.flags.loanBack = s.year + 3;
         s.flags.loanAmt = amt;
-      }
+      } else followUp(s, "loan_trouble", c.r.int(2, 3), { who: "sibling", amt: amt / W(s) });
       log(s, `You ${opt === "gift" ? "give" : "lend"} your sibling ${fmt(s, amt)}.`, "money");
     },
   },
@@ -1678,27 +2016,49 @@ const DEFS: EventDef[] = [
     id: "kid_college",
     tag: "life",
     forced: true,
-    chance: (s) => (s.kids.some((k) => s.year - k.born === 18) ? 1 : 0),
-    build: (s) => {
-      const kid = s.kids.find((k) => s.year - k.born === 18)!;
+    // 18, or a year or two later if a sibling's decision took this year's turn
+    chance: (s) => (s.kids.some((k) => s.year - k.born >= 18 && s.year - k.born <= 20 && s.flags[`college:${k.name}`] == null) ? 1 : 0),
+    build: (s, _c, p) => {
+      const kid = p.name ? s.kids.find((k) => k.name === p.name) : s.kids.find((k) => s.year - k.born >= 18 && s.year - k.born <= 20 && s.flags[`college:${k.name}`] == null);
+      if (!kid) return null;
       const cost = tuitionPerYear(s, "bachelor") * 4 + 0.3 * W(s) * 4;
+      // an older child's university sets what this one expects
+      const first = s.kids.find((k) => k.name !== kid.name && COLLEGE_DID[String(s.flags[`college:${k.name}`])]);
+      const firstOpt = first ? String(s.flags[`college:${first.name}`]) : "";
       return {
-        title: `${kid.name} got into university`,
-        body: `Four years of tuition and living costs: about ${fmt(s, cost)}.`,
-        options: [o("pay", "Pay for it"), o("half", "Pay half", "They borrow the rest"), o("loans", "Let them take out loans"), o("no", "Tell them to get a job")],
-        payload: { cost, name: kid.name },
+        title: p.name ? `${kid.name} is ready for university` : `${kid.name} got into university`,
+        body: `Four years of tuition and living costs: about ${fmt(s, cost)}.${first ? ` When ${first.name} went, you ${COLLEGE_DID[firstOpt]}.` : ""}`,
+        options: [
+          o("pay", "Pay for it", `${fmt(s, cost / 4)} a year for four years`),
+          o("half", "Pay half", "They borrow the rest"),
+          ...(first ? [o("local", "A cheaper university, living at home", `${fmt(s, (cost * 0.55) / 4)} a year`)] : []),
+          o("loans", "Let them take out loans"),
+          ...(first && !p.name ? [o("gap", "A year of work first", "They save up, and decide next year")] : []),
+          o("no", "Tell them to get a job"),
+        ],
+        payload: { cost, name: kid.name, first: first?.name ?? null, firstOpt },
       };
     },
-    resolve: (s, _c, p, opt) => {
-      if (opt === "half") {
-        pay(s, Number(p.cost) / 2);
-        bump(s, "happiness", 2);
+    resolve: (s, c, p, opt) => {
+      const name = String(p.name);
+      s.flags[`college:${name}`] = opt;
+      if (opt === "gap") {
+        followUp(s, "kid_college", 1, { name });
+        log(s, `${name} works for a year first.`, "neutral");
+        return;
       }
-      if (opt === "pay") {
-        pay(s, Number(p.cost));
-        bump(s, "happiness", 4);
-        s.flags.kidsCollege = Number(s.flags.kidsCollege ?? 0) + 1;
-      } else if (opt === "no") bump(s, "network", -3);
+      const share = ({ pay: 1, local: 0.55, half: 0.5 } as Record<string, number>)[opt] ?? 0;
+      if (share > 0) commit(s, { key: `college:${name}`, label: `${name}'s university`, wage: -(Number(p.cost) * share) / 4 / W(s), until: s.year + 3 });
+      if (opt === "pay" || opt === "local") bump(s, "happiness", 4);
+      else if (opt === "half") bump(s, "happiness", 2);
+      else if (opt === "no") bump(s, "network", -3);
+      const level: Record<string, number> = { pay: 4, local: 3, half: 2, loans: 1, no: 0 };
+      if (p.firstOpt && (level[opt] ?? 0) < (level[String(p.firstOpt)] ?? 0)) {
+        bump(s, "happiness", -3);
+        bump(s, "network", -2);
+        log(s, `${name} notices that ${p.first} got more.`, "bad");
+      }
+      if (opt !== "no" && c.r.chance(0.2)) followUp(s, "kid_dropout", c.r.int(1, 2), { name, opt });
     },
   },
   {
@@ -1725,10 +2085,11 @@ const DEFS: EventDef[] = [
       if (opt === "never") s.flags.rooted = true;
       if (opt !== "go") return;
       const dest = String(p.dest);
-      const from = countryIn(s.country);
+      const home = s.country;
       loseJob(s);
       moveCountry(s, dest);
-      log(s, `You leave ${from} for ${countryIn(dest)}.`, "milestone");
+      followUp(s, "homesick", 2, { from: home });
+      log(s, `You leave ${countryIn(home)} for ${countryIn(dest)}.`, "milestone");
       enqueue(s, "first_job", { title: "A new country", body: "Your qualifications don't fully count here yet. Here's what's on offer:" });
     },
   },
@@ -1935,6 +2296,7 @@ const DEFS: EventDef[] = [
       else if (opt === "spend") {
         s.consumerDebt += 0.25 * W(s);
         bump(s, "happiness", 4);
+        followUp(s, "card_debt", 2);
         log(s, "The card fills up fast.", "money");
       } else s.flags.prudent = true;
     },
@@ -2023,9 +2385,10 @@ const DEFS: EventDef[] = [
         payload: { pet, yearly },
       };
     },
-    resolve: (s, _c, p, opt) => {
+    resolve: (s, c, p, opt) => {
       if (opt === "adopt") {
         commit(s, { key: "pet", label: `Your ${p.pet}`, wage: -Number(p.yearly), until: s.year + 12, happiness: 1 });
+        followUp(s, "pet_sick", c.r.int(5, 9), { pet: p.pet });
         log(s, `You adopt a ${p.pet}.`, "milestone");
       } else if (opt === "foster") bump(s, "happiness", 2);
     },
@@ -2037,26 +2400,28 @@ const DEFS: EventDef[] = [
     chance: (s) => (adult(s) && s.age >= 25 && s.age <= 55 && s.access.bank ? 0.04 : 0),
     build: (s, c) => {
       const amt = 0.8 * c.w;
+      const what = c.r.pick(["car loan", "loan to open a café", "mortgage", "loan for a delivery van"]);
       return {
         title: "Will you co-sign?",
-        body: `An old friend needs a co-signer for ${c.r.pick(["a car loan", "a loan to open a café", "a mortgage", "a loan for a delivery van"])}: ${fmt(s, amt)}. If they don't pay, you do.`,
+        body: `An old friend needs a co-signer for a ${what}: ${fmt(s, amt)}. If they don't pay, you do.`,
         options: [
           o("sign", "Co-sign", "Most people pay. Some don't"),
           o("lend", `Lend ${fmt(s, amt * 0.3)} yourself instead`, "Smaller, and on your terms"),
           o("no", "Say no", "The friendship cools"),
         ],
-        payload: { amt },
+        payload: { amt, what },
       };
     },
     resolve: (s, c, p, opt) => {
       const amt = Number(p.amt);
       if (opt === "sign") {
         bump(s, "network", 4);
-        if (c.r.chance(0.3)) addDue(s, { key: "cosign", year: s.year + c.r.int(1, 3), wage: -amt / W(s), label: "The loan you co-signed", text: "Your friend stops paying. The bank comes to you for" });
+        if (c.r.chance(0.3)) followUp(s, "cosign_default", c.r.int(1, 3), { amt: amt / W(s), what: p.what });
       } else if (opt === "lend") {
         pay(s, amt * 0.3);
         bump(s, "network", 2);
         if (c.r.chance(0.65)) addDue(s, { key: "lent", year: s.year + 2, wage: (amt * 0.3) / W(s), label: "Your friend repays you", text: "Your friend pays you back:" });
+        else followUp(s, "loan_trouble", 2, { who: "friend", amt: (amt * 0.3) / W(s) });
       } else bump(s, "network", -4);
     },
   },
@@ -2217,6 +2582,7 @@ const DEFS: EventDef[] = [
       } else {
         s.job.mult *= 1.12;
         commit(s, { key: "commute", label: "Weekly commuting", wage: -0.04, until: s.year + 3, needsJob: true, happiness: -2 });
+        followUp(s, "commute_strain", 2);
       }
     },
   },
@@ -2256,6 +2622,7 @@ const DEFS: EventDef[] = [
       } else if (opt === "night") {
         bump(s, "skill", 6);
         bump(s, "health", -2);
+        followUp(s, "new_field", 2);
       }
     },
   },
@@ -2283,6 +2650,7 @@ const DEFS: EventDef[] = [
         const st = makeStock(s, c.r, true);
         st.name = String(p.name);
         st.value = 0.04 * W(s);
+        st.cost = st.value;
         s.stocks.push(st);
         bump(s, "network", 3);
         bump(s, "happiness", -1);
@@ -2294,6 +2662,7 @@ const DEFS: EventDef[] = [
       const st = makeStock(s, c.r, true);
       st.name = String(p.name);
       st.value = 0.3 * W(s);
+      st.cost = st.value;
       s.stocks.push(st);
       bump(s, "happiness", 3);
       log(s, `You join ${st.name}, for shares and a smaller salary.`, "milestone");
@@ -2444,10 +2813,14 @@ const DEFS: EventDef[] = [
         pay(s, price + reno);
         const mult = c.r.chance(0.7) ? c.r.range(1.1, 1.35) : c.r.range(0.75, 0.95);
         addDue(s, { key: `flip${s.year}`, year: s.year + 2, wage: ((price + reno) * mult) / W(s), label: "Your renovation project", text: "You sell the renovated flat for" });
+        if (c.r.chance(0.5)) followUp(s, "reno_surprise", 1, { key: `flip${s.year}`, price, reno });
         log(s, "You buy a wreck and start knocking down walls.", "money");
       } else if (opt === "rent" && buyProperty(s, "rental", price)) {
         pay(s, reno);
-        s.properties[s.properties.length - 1].value *= 1.15;
+        const flat = s.properties[s.properties.length - 1];
+        flat.value *= 1.15;
+        if (c.r.chance(0.5)) followUp(s, "reno_surprise", 1, { id: flat.id, price, reno });
+        else watchRental(s, c.r);
         log(s, "You renovate a flat and rent it out.", "money");
       }
     },
@@ -2612,12 +2985,12 @@ const DEFS: EventDef[] = [
         payload: { price },
       };
     },
-    resolve: (s, _c, p, opt) => {
+    resolve: (s, c, p, opt) => {
       if (opt === "no" || !buyProperty(s, "rental", Number(p.price))) return;
       if (opt === "keep") {
         s.properties[s.properties.length - 1].personal = true;
         commit(s, { key: "cottage", label: "Upkeep on the cottage", wage: -0.04, until: s.year + 30, happiness: 1 });
-      }
+      } else watchRental(s, c.r);
       log(s, opt === "keep" ? "You buy a holiday cottage." : "You buy a cottage to let.", "milestone");
     },
   },
@@ -2915,8 +3288,11 @@ const DEFS: EventDef[] = [
         payload: { price },
       };
     },
-    resolve: (s, _c, p, opt) => {
-      if (opt === "buy" && buyProperty(s, "rental", Number(p.price))) log(s, "You buy a flat to let at the top of the boom.", "money");
+    resolve: (s, c, p, opt) => {
+      if (opt === "buy" && buyProperty(s, "rental", Number(p.price))) {
+        watchRental(s, c.r, true);
+        log(s, "You buy a flat to let at the top of the boom.", "money");
+      }
       const home = s.properties.find((x) => x.kind === "home");
       if (opt === "sell" && home) {
         sellProperty(s, home.id);
@@ -2949,6 +3325,772 @@ const DEFS: EventDef[] = [
         bump(s, "health", -2);
       } else if (opt === "learn") bump(s, "skill", 5);
       else bump(s, "happiness", -2);
+    },
+  },
+  // ------------------------------------------------------------- choices that come back
+  {
+    id: "cosign_default",
+    tag: "money",
+    followUp: true,
+    build: (s, c, p) => {
+      const owed = Number(p.amt) * c.w * c.r.range(0.6, 0.9);
+      return {
+        title: "Your friend stopped paying",
+        body: `Your friend has stopped paying the ${String(p.what ?? "loan")} you co-signed. The bank wants the ${fmt(s, owed)} still owed, from you.`,
+        options: [
+          o("pay", "Pay it off now", "Clean, and expensive"),
+          o("spread", "Take over the payments", `${fmt(s, (owed * 1.12) / 3)} a year for three years`),
+          o("rescue", "Help them get back on their feet", `${fmt(s, owed / 3)} now. They may manage the rest`),
+          o("refuse", "Refuse, and let the bank chase you", "The debt stays, and your credit is ruined for years"),
+        ],
+        payload: { owed },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const owed = Number(p.owed);
+      if (opt === "pay") {
+        pay(s, owed);
+        bump(s, "network", -2);
+        log(s, `You pay off your friend's loan: ${fmt(s, owed)}.`, "money");
+      } else if (opt === "spread") {
+        commit(s, { key: "cosigned", label: "Your friend's loan", wage: -(owed * 1.12) / 3 / W(s), until: s.year + 2 });
+        log(s, "You take over your friend's loan payments.", "money");
+      } else if (opt === "rescue") {
+        pay(s, owed / 3);
+        if (c.r.chance(0.55)) {
+          bump(s, "network", 6);
+          log(s, "With your help, your friend gets back on their feet and pays the rest.", "good");
+        } else {
+          addDue(s, { key: "cosign", year: s.year + 1, wage: -((owed * 2) / 3) / W(s), label: "Your friend's loan", text: "Your friend falls behind again. The bank collects" });
+          log(s, "You pay a third and hope for the best.", "neutral");
+        }
+      } else {
+        s.consumerDebt += owed * 1.15;
+        s.creditLockUntil = Math.max(s.creditLockUntil, s.year + 5);
+        delete s.flags.goodCredit;
+        bump(s, "network", -6);
+        log(s, "You refuse. The debt goes to collectors, and your credit goes with it.", "bad");
+      }
+    },
+  },
+  {
+    id: "loan_trouble",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      const amt = Number(p.amt) * c.w;
+      const sib = p.who === "sibling";
+      const goods = c.r.pick(dev(s) >= 0.5 ? ["car", "motorbike", "boat"] : ["motorbike", "goats", "sewing machine"]);
+      return {
+        title: sib ? "Your sibling can't pay you back" : "Your friend can't pay you back",
+        body: `You lent ${sib ? "your sibling" : "your friend"} ${fmt(s, amt)}. ${c.r.pick(["The business didn't make it.", "They lost their job.", "Things have been hard since their divorce.", "They say next year will be better."])} The money isn't there.`,
+        options: [
+          o("forgive", "Write it off", "Keep the peace"),
+          o("wait", "Give them two more years", "They might manage"),
+          o("goods", `Take their ${goods} instead`, "Worth about half, and hard feelings"),
+          o("press", "Insist on it", sib ? "Even if it splits the family" : "Even if it ends the friendship"),
+        ],
+        payload: { amt, sib },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const amt = Number(p.amt);
+      if (opt === "forgive") {
+        bump(s, "network", 4);
+        log(s, "You let the debt go.", "neutral");
+      } else if (opt === "wait") {
+        if (c.r.chance(0.5)) addDue(s, { key: `repaid${s.year}`, year: s.year + 2, wage: amt / W(s), label: "A loan repaid at last", text: "They pay you back at last:" });
+        log(s, "You give them more time.", "neutral");
+      } else if (opt === "goods") {
+        invest(s, amt * 0.5);
+        bump(s, "network", -5);
+        bump(s, "happiness", -2);
+        log(s, "You take what they have instead of the money.", "money");
+      } else {
+        const got = c.r.chance(0.5);
+        if (got) invest(s, amt * 0.7);
+        bump(s, "network", p.sib ? -10 : -7);
+        bump(s, "happiness", -4);
+        log(s, `${got ? "You get most of it back" : "You get nothing back"}, and ${p.sib ? "family dinners are never the same" : "lose a friend"}.`, "bad");
+      }
+    },
+  },
+  {
+    id: "startup_exit",
+    tag: "market",
+    followUp: true,
+    build: (s, c, p) => {
+      const st = s.stocks.find((x) => x.id === p.id && x.alive);
+      if (!st) return null;
+      const buyer = makeStock(s, c.r);
+      const mult = st.cost > 0 ? st.value / st.cost : 0;
+      const yours = st.sector === "Your employer";
+      return {
+        title: yours ? "Your company is being bought" : `${st.name} is being bought`,
+        body: `${buyer.name}, a listed ${buyer.sector.toLowerCase()} company, is buying ${yours ? "the company you work for" : st.name}. Your ${yours ? "shares are" : "stake is"} worth ${fmt(s, st.value)}${mult >= 2 ? `, ${mult.toFixed(0)} times what ${yours ? "they were" : "it was"}` : ""}.`,
+        options: [
+          o("cash", "Take the cash", "Safe"),
+          o("shares", `Take ${buyer.name} shares instead`, "A fifth more, if their shares hold up"),
+          yours ? o("quit", "Cash out and walk away from the job", "The money, and your time back") : o("roll", "Put half into the founders' next startup", "Lightning might strike twice"),
+        ],
+        payload: { id: st.id, buyer },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const st = s.stocks.find((x) => x.id === p.id && x.alive);
+      if (!st) return;
+      const value = st.value;
+      s.stocks = s.stocks.filter((x) => x !== st);
+      if (opt === "shares") {
+        const b = { ...(p.buyer as Record<string, unknown>) } as unknown as Stock;
+        Object.assign(b, { value: value * 1.2, cost: value, bought: s.year, beta: 1, drift: 0, vol: 0.3, hazard: 0.01, boost: undefined, boostUntil: undefined });
+        s.stocks.push(b);
+        log(s, `You swap your stake for ${fmt(s, b.value)} of ${b.name} shares.`, "money");
+      } else if (opt === "roll") {
+        invest(s, value / 2);
+        const next = makeStock(s, c.r, true);
+        Object.assign(next, { value: value / 2, cost: value / 2 });
+        s.stocks.push(next);
+        log(s, `You cash out half and back the founders' next company, ${next.name}.`, "money");
+      } else {
+        invest(s, value);
+        if (opt === "quit" && s.job) {
+          loseJob(s);
+          bump(s, "happiness", 4);
+        }
+        log(s, opt === "quit" ? `You cash out ${fmt(s, value)} and walk away from the job.` : `You cash out ${fmt(s, value)}.`, "good");
+      }
+    },
+  },
+  {
+    id: "rental_trouble",
+    tag: "money",
+    followUp: true,
+    build: (s, c, p) => {
+      const prop = s.properties.find((x) => x.id === p.id);
+      if (!prop) return null;
+      const rent = prop.value * c.e.rentYield * 0.7;
+      if (p.boom && prop.value < prop.price * 0.92) {
+        const left = prop.value * 0.95 - prop.mortgage;
+        return {
+          title: "The boom is over",
+          body: `The flat you bought for ${fmt(s, prop.price)} is worth about ${fmt(s, prop.value)} now, and you still owe ${fmt(s, prop.mortgage)} on it.`,
+          options: [
+            o("hold", "Hold on and keep letting it", "Prices came back last time. Eventually"),
+            o("sell", "Sell now and take the loss", left >= 0 ? `You'd walk away with ${fmt(s, left)}` : `You'd still owe ${fmt(s, -left)}`),
+            o("keys", "Hand the keys back to the bank", "The debt goes, and your credit with it", (s.country !== "USA" && "Banks here can chase you for the rest") || (prop.mortgage <= prop.value && "You owe less than it's worth")),
+          ],
+          payload: { id: prop.id, kind: "bust" },
+        };
+      }
+      if (p.again || c.r.chance(0.45)) {
+        const thing = String(p.again ?? c.r.pick(["roof", "boiler", "wiring", "plumbing", "damp"]));
+        const cost = prop.value * c.r.range(0.03, 0.05) * (p.again ? 1.4 : 1);
+        const need = thing === "roof" || thing === "boiler" ? `a new ${thing}` : thing === "damp" ? "the damp sorted out" : `new ${thing}`;
+        return {
+          title: p.again ? `The ${thing} again` : `Trouble with the ${thing}`,
+          body: p.again ? `The ${thing} you patched has failed again. Doing it properly now costs ${fmt(s, cost)}.` : `Your rental needs ${need}: about ${fmt(s, cost)}.`,
+          options: [
+            o("fix", "Do it properly", fmt(s, cost)),
+            o("patch", "Patch it up", `${fmt(s, cost * 0.3)}. It may go again`),
+            o("sell", "Sell the flat as it is", "The buyer will want a discount"),
+          ],
+          payload: { id: prop.id, kind: "repair", cost, thing },
+        };
+      }
+      return {
+        title: c.r.pick(["Your tenant stopped paying", "Rent arrears"]),
+        body: `Your tenant is six months behind: ${fmt(s, rent * 0.5)}. ${c.r.pick(["They say they lost their job.", "They've stopped answering the phone.", "They say the flat is too cold to pay for."])}`,
+        options: [
+          o("evict", "Go to court to evict them", `Lawyers and empty months: about ${fmt(s, rent * 0.3)} more`),
+          o("plan", "Agree a payment plan", "Usually works. Not always"),
+          o("cash", "Pay them to leave", `${fmt(s, rent * 0.15)}, and the flat is yours again next month`),
+          o("sell", "Sell the flat, tenant and all", "A discount for whoever takes on the problem"),
+        ],
+        payload: { id: prop.id, kind: "arrears", arrears: rent * 0.5, rent },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const prop = s.properties.find((x) => x.id === p.id);
+      if (!prop) return;
+      if (p.kind === "bust") {
+        if (opt === "sell") {
+          sellProperty(s, prop.id);
+          log(s, "You sell at a loss.", "money");
+        } else if (opt === "keys") {
+          s.properties = s.properties.filter((x) => x !== prop);
+          s.creditLockUntil = Math.max(s.creditLockUntil, s.year + 6);
+          delete s.flags.goodCredit;
+          log(s, "You hand the keys back. The debt is gone, and so is your credit.", "bad");
+        } else log(s, "You hold on and wait for prices to come back.", "neutral");
+        return;
+      }
+      if (p.kind === "repair") {
+        const cost = Number(p.cost);
+        if (opt === "fix") {
+          pay(s, cost);
+          prop.value *= 1.02;
+          log(s, `You have the ${p.thing} done properly.`, "money");
+        } else if (opt === "patch") {
+          pay(s, cost * 0.3);
+          if (c.r.chance(0.5)) followUp(s, "rental_trouble", c.r.int(1, 3), { id: prop.id, again: p.thing });
+          log(s, `You patch the ${p.thing} up.`, "money");
+        } else {
+          sellProperty(s, prop.id, 0.06);
+          log(s, "You sell the flat as it is.", "money");
+        }
+        return;
+      }
+      const arrears = Number(p.arrears);
+      const rent = Number(p.rent);
+      if (opt === "evict") {
+        pay(s, arrears + rent * 0.3);
+        log(s, "After months in court, the flat is empty again.", "money");
+      } else if (opt === "plan") {
+        if (c.r.chance(0.65)) {
+          bump(s, "network", 2);
+          log(s, "Your tenant pays it all back over the year.", "good");
+        } else {
+          pay(s, arrears + rent * 0.25);
+          log(s, "The payment plan falls apart, and they leave owing you.", "bad");
+        }
+      } else if (opt === "cash") {
+        pay(s, arrears + rent * 0.15);
+        log(s, "You pay your tenant to leave.", "money");
+      } else {
+        pay(s, arrears);
+        sellProperty(s, prop.id, 0.1);
+        log(s, "You sell the flat, tenant and all.", "money");
+      }
+    },
+  },
+  {
+    id: "hustle_grows",
+    tag: "career",
+    followUp: true,
+    build: (s, c, p) => {
+      const h = HUSTLES.find((x) => x.id === p.id);
+      if (!h || !commitments(s).some((x) => x.key === "hustle")) return null;
+      const type = HUSTLE_BIZ[h.id];
+      const chk = canStartBusiness(s, type);
+      const now = h.wage * 2 * c.w;
+      return {
+        title: `${h.label(s)} is taking off`,
+        body: `It brings in about ${fmt(s, now)} a year now${s.job ? `, ${pct(now / salary(s), 0)} of your pay` : ""}. People want more of your time than your evenings can give.`,
+        options: [
+          o("full", "Quit your job and make it your business", `${BIZ[type].title}, with customers from day one`, !chk.ok && chk.reason),
+          o("grow", "Grow it on the side", "Twice the money, no evenings left"),
+          o("sell", "Hand your customers to someone else", `About ${fmt(s, now)} for the lot`),
+          o("stop", "Wind it down", "Your evenings back"),
+        ],
+        payload: { id: h.id, type },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const h = HUSTLES.find((x) => x.id === p.id)!;
+      if (opt === "grow") {
+        commit(s, { key: "hustle", label: h.label(s), wage: h.wage * 2, until: s.year + 4, health: (h.health ?? 0) - 1, happiness: (h.happiness ?? 0) - 1 });
+        log(s, `${h.label(s)} takes over your evenings.`, "money");
+        return;
+      }
+      if (opt === "full") {
+        if (!startBusiness(s, p.type as BizType, c.r)) return;
+        const b = s.business!;
+        invest(s, 0.4 * BIZ[b.type].cost * W(s)); // the customers and the tools are already there
+        b.scale *= 1.2;
+        log(s, `You go full time. ${h.label(s)} becomes ${b.name}.`, "milestone");
+      } else if (opt === "sell") {
+        invest(s, h.wage * 2 * W(s));
+        log(s, "You hand your customers over for a lump sum.", "money");
+      } else {
+        bump(s, "health", 2);
+        bump(s, "happiness", 2);
+      }
+      endCommitment(s, "hustle");
+    },
+  },
+  {
+    id: "care_change",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      const i = Number(p.i) as 0 | 1;
+      if (!s.parents.alive[i]) return null;
+      const who = i === 0 ? "mother" : "father";
+      const mode = String(s.flags[`care${i}`] ?? "");
+      const cost = careCost(s);
+      const home = dev(s) >= 0.45;
+      const n = Number(p.n ?? 0);
+      if (mode === "self" || mode === "together" || mode === "shared") {
+        return {
+          title: `Your ${who} is getting worse`,
+          body: `Your ${who} needs help through the night now, and doesn't always know where ${i === 0 ? "she" : "he"} is.`,
+          options: [
+            o("home", home ? "Move them into a care home" : "Pay for a full-time carer", `About ${fmt(s, cost)} a year, their savings first`),
+            o("livein", "Hire a live-in carer", `About ${fmt(s, cost * 0.6)} a year, and you work full time again`),
+            o("keep", "Keep caring for them yourself", "It will take more out of you"),
+            ...(s.siblings && mode !== "shared" ? [o("turns", "Ask your siblings to take turns", "Half the load, if they agree")] : []),
+          ],
+          payload: { i, n },
+        };
+      }
+      if (mode === "home" || mode === "livein") {
+        const now = cost * (mode === "home" ? 1 : 0.6) * Number(s.flags[`careFee${i}`] ?? 1);
+        return {
+          title: mode === "home" ? (home ? "The care home raises its fees" : "The carer wants more") : "The carer wants a raise",
+          body: `Your ${who}'s care goes up by a fifth, to about ${fmt(s, now * 1.2)} a year before their savings and any help from the state.`,
+          options: [
+            o("payfee", "Pay it", "Nothing changes for them"),
+            o("cheaper", mode === "home" && home ? "Move them somewhere cheaper" : "Find a cheaper carer", "A fifth less, and an unsettling change"),
+            o("bring", "Bring them to live with you", "A quarter of the cost and about 15% less pay"),
+          ],
+          payload: { i, n },
+        };
+      }
+      if (mode === "siblings") {
+        const one = s.siblings === 1;
+        return {
+          title: one ? "Your sibling can't cope" : "Your siblings can't cope",
+          body: `${one ? "Your sibling has" : "Your siblings have"} looked after your ${who} for years without you, and ${one ? "is" : "are"} worn out.`,
+          options: [
+            o("take", "Take your turn", `Your ${who} moves in with you`),
+            o("carehome", home ? "Pay for a care home" : "Pay for a carer", `Your share: about ${fmt(s, cost / (s.siblings + 1))} a year`),
+            o("send", "Send money every year", fmt(s, 0.08 * c.w)),
+            o("leave", "Leave it with them", "They won't forget"),
+          ],
+          payload: { i, n },
+        };
+      }
+      return null;
+    },
+    resolve: (s, c, p, opt) => {
+      const i = Number(p.i);
+      const key = `care${i}`;
+      const fee = `careFee${i}`;
+      const who = i === 0 ? "mother" : "father";
+      if (opt !== "keep") delete s.flags[`careHard${i}`];
+      if (opt === "home" || opt === "carehome") {
+        s.flags[key] = "home";
+        delete s.flags[fee];
+        if (opt === "carehome") delete s.flags.careLeft;
+        log(s, dev(s) >= 0.45 ? `Your ${who} moves into a care home.` : `You pay a carer to look after your ${who}.`, "neutral");
+      } else if (opt === "livein") {
+        s.flags[key] = "livein";
+        delete s.flags[fee];
+        log(s, `A carer moves in with your ${who}.`, "neutral");
+      } else if (opt === "keep") {
+        s.flags[`careHard${i}`] = true;
+        log(s, `You keep caring for your ${who}, nights included.`, "neutral");
+      } else if (opt === "turns") {
+        if (c.r.chance(0.7)) {
+          s.flags[key] = "shared";
+          bump(s, "network", 3);
+          log(s, "Your siblings agree to take turns.", "good");
+        } else {
+          bump(s, "happiness", -2);
+          log(s, "Your siblings say they can't.", "bad");
+        }
+      } else if (opt === "payfee") s.flags[fee] = Number(s.flags[fee] ?? 1) * 1.2;
+      else if (opt === "cheaper") {
+        s.flags[fee] = Number(s.flags[fee] ?? 1) * 0.8;
+        bump(s, "happiness", -3);
+      } else if (opt === "bring" || opt === "take") {
+        s.flags[key] = "together";
+        delete s.flags[fee];
+        if (opt === "take") {
+          delete s.flags.careLeft;
+          bump(s, "network", 4);
+        }
+        log(s, `Your ${who} moves in with you.`, "neutral");
+      } else if (opt === "send") {
+        commit(s, { key: `careHelp${i}`, label: `Help with your ${who}'s care`, wage: -0.08, until: s.year + 6 });
+        s.flags.careLeft = "helped";
+        bump(s, "network", 2);
+      } else {
+        bump(s, "network", -6);
+        bump(s, "happiness", -3);
+      }
+      // while they live, the story isn't over
+      if (Number(p.n) < 1 && c.r.chance(0.5)) followUp(s, "care_change", c.r.int(2, 4), { i, n: Number(p.n) + 1 });
+    },
+  },
+  {
+    id: "kid_dropout",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      const kid = s.kids.find((k) => k.name === p.name);
+      if (!kid) return null;
+      const paying = commitments(s).find((x) => x.key === `college:${kid.name}`);
+      const plan = c.r.pick([
+        { why: "to start a business with a friend", seed: 0.4 },
+        { why: "for a job that won't wait", seed: 0 },
+        { why: "because they hate the course", seed: 0 },
+      ]);
+      const saved = paying ? -paying.wage * c.w * (paying.until - s.year + 1) : 0;
+      return {
+        title: `${kid.name} wants to drop out`,
+        body: `${kid.name} wants to leave university ${plan.why}.${p.opt === "loans" ? " They already owe a year's worth of student loans." : ""}`,
+        options: [
+          o("back", plan.seed ? `Back their plan with ${fmt(s, plan.seed * c.w)}` : "Back their decision", plan.seed ? "Most new businesses fail. Some don't" : "It's their life"),
+          o("finish", "Insist they finish first", "They might resent it"),
+          o("switch", "Pay for a fresh start on a course they like", `${fmt(s, 0.35 * c.w)} for an extra year`),
+          o("cut", paying ? "Let them go, and stop paying" : "Let them go, and stay out of it", paying ? `You keep about ${fmt(s, saved)}` : undefined),
+        ],
+        payload: { name: kid.name, seed: plan.seed },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const name = String(p.name);
+      if (opt === "back") {
+        endCommitment(s, `college:${name}`);
+        if (Number(p.seed) > 0) {
+          pay(s, Number(p.seed) * W(s));
+          if (c.r.chance(0.25)) addDue(s, { key: `kidwin:${name}`, year: s.year + c.r.int(6, 10), wage: 1, label: `A gift from ${name}`, text: `${name}'s business has taken off. They insist on paying you back, and then some:` });
+        }
+        bump(s, "happiness", 2);
+        log(s, `${name} leaves university with your blessing.`, "neutral");
+      } else if (opt === "finish") {
+        bump(s, "happiness", -2);
+        log(s, `${name} stays on, unhappily.`, "neutral");
+      } else if (opt === "switch") {
+        pay(s, 0.35 * W(s));
+        bump(s, "happiness", 2);
+        log(s, `${name} switches to a course they love.`, "good");
+      } else {
+        endCommitment(s, `college:${name}`);
+        bump(s, "happiness", -2);
+        bump(s, "network", -2);
+        log(s, `${name} leaves university.`, "neutral");
+      }
+    },
+  },
+  {
+    id: "pet_sick",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      if (!commitments(s).some((x) => x.key === "pet")) return null;
+      const pet = String(p.pet);
+      const cost = (pet === "dog" ? 0.2 : 0.14) * c.w;
+      return {
+        title: `Your ${pet} is sick`,
+        body: `The vet finds ${c.r.pick(["a tumour", "a failing kidney", "a blocked gut", "a heart problem"])}. An operation would cost ${fmt(s, cost)}. Without it, your ${pet} has months, not years.`,
+        options: [
+          o("operate", "Pay for the operation", fmt(s, cost)),
+          ...(s.year >= 2012 ? [o("fund", "Ask friends to chip in online", "Most of it, and a little awkward")] : []),
+          o("comfort", "Keep them comfortable", `${fmt(s, 0.02 * c.w)} of medicine`),
+          o("goodbye", "Say goodbye now", "The kindest thing, the vet says"),
+        ],
+        payload: { pet, cost },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const pet = String(p.pet);
+      const until = (y: number) => {
+        s.recurring = (s.recurring ?? []).map((x) => (x.key === "pet" ? { ...x, until: y } : x));
+      };
+      if (opt === "operate" || opt === "fund") {
+        pay(s, Number(p.cost) * (opt === "fund" ? 0.35 : 1));
+        if (opt === "fund") bump(s, "network", 2);
+        if (c.r.chance(0.75)) {
+          log(s, `Your ${pet} pulls through.`, "good");
+          return;
+        }
+        log(s, `Your ${pet} dies on the operating table.`, "bad");
+      } else if (opt === "comfort") {
+        pay(s, 0.02 * W(s));
+        until(s.year);
+        bump(s, "happiness", -3);
+        log(s, `You keep your ${pet} comfortable to the end.`, "neutral");
+        return;
+      } else log(s, `You say goodbye to your ${pet}.`, "bad");
+      until(s.year - 1);
+      bump(s, "happiness", -5);
+    },
+  },
+  {
+    id: "ponzi_more",
+    tag: "market",
+    followUp: true,
+    build: (s) => {
+      if (!s.flags.ponziEnd) return null;
+      const amt = Number(s.flags.ponziAmt);
+      return {
+        title: "The fund wants more",
+        body: `Your "guaranteed" fund has paid you ${fmt(s, amt * 0.3)} so far. Now it offers a bonus on new money, and 10% of whatever your friends put in.`,
+        options: [
+          o("out", "Take your money out", "While they're still paying"),
+          o("stay", "Leave it in", "It's working, isn't it?"),
+          o("more", "Put more in", fmt(s, liquid(s) * 0.2)),
+          o("recruit", "Bring in friends and family", "Money now. They'll know who brought them in"),
+        ],
+      };
+    },
+    resolve: (s, c, _p, opt) => {
+      const amt = Number(s.flags.ponziAmt ?? 0);
+      if (opt === "out") {
+        if (c.r.chance(0.6)) {
+          invest(s, amt * 0.9);
+          delete s.flags.ponziEnd;
+          delete s.flags.ponziAmt;
+          log(s, "You get most of your money out. Others won't be so lucky.", "good");
+        } else log(s, "'Withdrawals are paused for an audit.' Your money stays in.", "bad");
+      } else if (opt === "more") {
+        const add = raiseCash(s, liquid(s) * 0.2);
+        s.flags.ponziAmt = amt + add;
+        log(s, `You put in another ${fmt(s, add)}.`, "money");
+      } else if (opt === "recruit") {
+        const fee = 0.2 * W(s);
+        invest(s, fee);
+        s.flags.ponziRecruited = true;
+        log(s, `Friends and family sign up. Your commission: ${fmt(s, fee)}.`, "money");
+      }
+    },
+  },
+  {
+    id: "card_debt",
+    tag: "money",
+    followUp: true,
+    build: (s, c) => {
+      const debt = s.consumerDebt;
+      if (debt < 0.1 * c.w) return null;
+      const parents = (s.parents.alive[0] || s.parents.alive[1]) && s.parents.wealthMult * c.w >= debt;
+      return {
+        title: "The card is still full",
+        body: `Two years after you took that card and treated yourself, you owe ${fmt(s, debt)} at ${pct(consumerRate(s), 0)} a year. The minimum payment barely covers the interest.`,
+        options: [
+          o("clear", "Clear it from your savings", "The best return you'll ever get", liquid(s) < debt * 0.5 && "Your savings won't cover it"),
+          o("loan", "Swap it for a cheaper loan", "Half the rate, paid off in three years", (!s.access.bank || s.year < s.creditLockUntil) && "No bank will lend to you"),
+          o("min", "Keep paying the minimum", "Nothing changes"),
+          o("family", "Ask your parents to bail you out", "They'll help. They'll remember", !parents && "They can't"),
+        ],
+      };
+    },
+    resolve: (s, _c, _p, opt) => {
+      if (opt === "clear") {
+        s.consumerDebt -= raiseCash(s, s.consumerDebt);
+        bump(s, "happiness", 2);
+        log(s, "You clear the card from your savings.", "money");
+      } else if (opt === "loan") {
+        s.flags.cheapDebtUntil = s.year + 3;
+        log(s, "You swap the card for a cheaper loan.", "money");
+      } else if (opt === "family") {
+        s.parents.wealthMult -= s.consumerDebt / W(s);
+        s.consumerDebt = 0;
+        bump(s, "happiness", -2);
+        bump(s, "network", -2);
+        log(s, "Your parents pay off your card.", "money");
+      } else bump(s, "happiness", -1);
+    },
+  },
+  {
+    id: "reno_surprise",
+    tag: "money",
+    followUp: true,
+    build: (s, c, p) => {
+      const flip = typeof p.key === "string";
+      if (flip ? !s.dues?.some((d) => d.key === p.key) : !s.properties.some((x) => x.id === p.id)) return null;
+      const extra = Number(p.reno) * c.r.range(0.5, 0.9);
+      return {
+        title: "Trouble behind the walls",
+        body: `The builders found ${c.r.pick(["rot in the floor joists", "asbestos in the ceilings", "wiring that would never pass an inspection", "cracks from subsidence"])}. Putting it right will cost another ${fmt(s, extra)}.`,
+        options: [
+          o("fix", "Put it right", fmt(s, extra)),
+          o("hide", "Cover it up and carry on", "Free now. If it comes out, it costs more"),
+          o("sell", flip ? "Sell it now, unfinished" : "Sell the flat as it is", "Cut your losses"),
+        ],
+        payload: { ...p, extra },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      const extra = Number(p.extra);
+      const flip = typeof p.key === "string";
+      if (opt === "fix") {
+        pay(s, extra);
+        const prop = flip ? null : s.properties.find((x) => x.id === p.id);
+        if (prop) prop.value *= 1.03;
+        log(s, "You put it right, properly.", "money");
+      } else if (opt === "hide") {
+        if (c.r.chance(0.35)) {
+          addDue(s, {
+            key: `hidden${s.year}`,
+            year: s.year + c.r.int(1, 3),
+            wage: -(extra * 1.8) / W(s),
+            label: "What you covered up",
+            text: flip ? "The buyer finds what you hid, and sues. It costs you" : "An inspector finds what you hid. Fines and repairs cost you",
+          });
+        }
+        log(s, "You plaster over the problem.", "neutral");
+      } else if (flip) {
+        s.dues = (s.dues ?? []).filter((d) => d.key !== p.key);
+        invest(s, (Number(p.price) + Number(p.reno) * 0.5) * 0.85);
+        log(s, "You sell the half-finished flat.", "money");
+      } else {
+        sellProperty(s, String(p.id), 0.12);
+        log(s, "You sell the flat as it is.", "money");
+      }
+    },
+  },
+  {
+    id: "homesick",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      const from = String(p.from);
+      if (s.country === from) return null;
+      const parents = s.parents.alive[0] || s.parents.alive[1];
+      return {
+        title: "Homesick",
+        body: `Two years in ${countryIn(s.country)}. ${parents ? `Your parents are getting older in ${countryIn(from)}.` : `You miss ${countryIn(from)}.`} ${c.r.pick(["You still dream in your own language.", "Your friends back home have children now.", "The food here still tastes wrong."])}`,
+        options: [
+          o("stay", "Stay and put down roots", "Make this home"),
+          o("back", `Go back to ${countryIn(from)}`, "Start over where you started"),
+          o("bring", "Bring your parents over", `${fmt(s, 0.3 * c.w)} for visas and flights, and they live with you`, !parents && "Your parents are gone"),
+          o("send", "Stay, and send money home", `${fmt(s, 0.08 * c.w)} a year`),
+        ],
+        payload: { from },
+      };
+    },
+    resolve: (s, _c, p, opt) => {
+      if (opt === "stay") {
+        s.flags.rooted = true;
+        bump(s, "network", 3);
+        bump(s, "happiness", 2);
+      } else if (opt === "back") {
+        const was = countryIn(s.country);
+        loseJob(s);
+        moveCountry(s, String(p.from));
+        log(s, `You leave ${was} and go home to ${countryIn(s.country)}.`, "milestone");
+        enqueue(s, "first_job", { title: "Back home", body: "You're back, with new skills and old friends. Here's what's on offer:" });
+      } else if (opt === "bring") {
+        pay(s, 0.3 * W(s));
+        commit(s, { key: "parentsHere", label: "Your parents, living with you", wage: -0.06, until: s.year + 10, happiness: 1 });
+        bump(s, "happiness", 4);
+        log(s, "Your parents come to live with you.", "milestone");
+      } else {
+        commit(s, { key: "remit", label: "Money sent home", wage: -0.08, until: s.year + 10 });
+        bump(s, "network", 2);
+        bump(s, "happiness", 2);
+      }
+    },
+  },
+  {
+    id: "commute_strain",
+    tag: "career",
+    followUp: true,
+    build: (s) => {
+      if (!s.job || !commitments(s).some((x) => x.key === "commute")) return null;
+      const p = s.partner;
+      return {
+        title: "Living out of a suitcase",
+        body: `Two years of Monday-morning trains and Friday-night returns. ${p ? (s.kids.length ? `${p.name} says the children barely know you.` : `${p.name} says it feels like living alone.`) : "Your friends have stopped calling."}`,
+        options: [
+          o("move", p ? "Move the family there" : "Move there for good", "One home again"),
+          o("back", "Ask to go back to your old office", "Home every night, without the raise"),
+          o("remote", "Ask to work from home some days", "If they agree", s.year < 2005 && "Nobody works from home yet"),
+          o("keep", "Keep going", "The money's good"),
+        ],
+      };
+    },
+    resolve: (s, c, _p, opt) => {
+      if (!s.job) return;
+      if (opt === "move") {
+        endCommitment(s, "commute");
+        bump(s, "network", -5);
+        bump(s, "happiness", 2);
+        if (s.partner?.working && c.r.chance(0.5)) {
+          s.partner.working = false;
+          log(s, `${s.partner.name} gives up their job for the move.`, "neutral");
+        }
+        log(s, "You move for good.", "milestone");
+      } else if (opt === "back") {
+        endCommitment(s, "commute");
+        s.job.mult /= 1.12;
+        bump(s, "happiness", 4);
+        log(s, "You go back to your old office, and your old pay.", "neutral");
+      } else if (opt === "remote") {
+        if (c.r.chance(0.6)) {
+          commit(s, { key: "commute", label: "Commuting, now and then", wage: -0.02, until: s.year + 5, needsJob: true });
+          bump(s, "happiness", 3);
+          log(s, "They agree. You're home most of the week.", "good");
+        } else {
+          bump(s, "happiness", -1);
+          log(s, "They say no.", "bad");
+        }
+      } else commit(s, { key: "commute", label: "Weekly commuting", wage: -0.04, until: s.year + 3, needsJob: true, health: -1, happiness: -3 });
+    },
+  },
+  {
+    id: "new_field",
+    tag: "career",
+    followUp: true,
+    build: (s, c) => {
+      const j = s.job;
+      if (!j) return null;
+      const reach = (occ: string) => OCC[occ].pay * (1 + OCC[occ].growth) ** OCC[occ].peak;
+      const of = makeOffers(s, c.r, 5).find((x) => x.occ !== j.occ && reach(x.occ) > reach(j.occ) * 1.1);
+      if (!of) return null;
+      const start = Math.min(of.mult, j.mult * 0.85);
+      return {
+        title: "Your course is done",
+        body: `Two years of evenings, and you have the certificate. ${upperFirst(of.employer)} offers you a junior job as ${aTitle(of.title)}: ${fmt(s, start * c.w)} a year, ${pct(1 - start / j.mult, 0)} less than you earn now.`,
+        options: [
+          o("switch", "Start again in the new field", "Less now, more room to grow"),
+          o("inside", "Ask your employer for a role that uses it", "A raise, if they have one"),
+          o("side", "Use it on the side", `About ${fmt(s, 0.1 * c.w)} a year in freelance work`),
+          o("stay", "Stay where you are", "The certificate goes in a drawer"),
+        ],
+        payload: { of: { ...of, mult: start } },
+      };
+    },
+    resolve: (s, c, p, opt) => {
+      if (opt === "switch") {
+        const of = p.of as Offer;
+        takeJob(s, of);
+        log(s, `You start again as ${aTitle(of.title)} at ${of.employer}.`, "milestone");
+      } else if (opt === "inside" && s.job) {
+        if (c.r.chance(0.5)) {
+          s.job.mult *= 1.08;
+          bump(s, "skill", 3);
+          log(s, "Your employer finds you a role that uses your new skills, with a raise.", "good");
+        } else log(s, "Your employer has nothing for you.", "neutral");
+      } else if (opt === "side") commit(s, { key: "certside", label: "Freelance work on the side", wage: 0.1, until: s.year + 4, happiness: -1 });
+    },
+  },
+  {
+    id: "childcare",
+    tag: "life",
+    followUp: true,
+    build: (s, c, p) => {
+      const partner = s.partner;
+      if (!partner) return null;
+      const grand = (s.parents.alive[0] || s.parents.alive[1]) && s.country === s.birthCountry;
+      return {
+        title: "Two children under five",
+        body: `With ${String(p.name)} here, someone has to look after the children while you both work.`,
+        options: [
+          o("partner", `${partner.name} stays home for a few years`, `${fmt(s, partner.mult * c.w)} a year less for about four years`),
+          o("paid", "Pay for childcare", `About ${fmt(s, 0.15 * c.w)} a year until school`),
+          o("grand", "The grandparents help out", "Free, and family close", !grand && "Your parents aren't nearby"),
+          o("you", "You go part-time", "About 40% less pay for four years", !s.job && "You're not in a job you can cut back"),
+        ],
+      };
+    },
+    resolve: (s, _c, _p, opt) => {
+      if (opt === "partner" && s.partner) {
+        s.partner.working = false;
+        s.flags.partnerBack = s.year + 4;
+        log(s, `${s.partner.name} stays home with the children.`, "neutral");
+      } else if (opt === "paid") commit(s, { key: "childcare", label: "Childcare", wage: -0.15, until: s.year + 4 });
+      else if (opt === "grand") {
+        bump(s, "happiness", 2);
+        bump(s, "network", 2);
+        log(s, "The grandparents look after the children.", "good");
+      } else if (opt === "you" && s.job) {
+        commit(s, { key: "parttime", label: "Working part-time", wage: -0.4 * s.job.mult, until: s.year + 4, needsJob: true, happiness: 1 });
+        log(s, "You go part-time while the children are small.", "neutral");
+      }
     },
   },
   // ------------------------------------------------------------- business

@@ -13,7 +13,7 @@ import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
-  addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, commitments, consumerRate, creditLimit, dev, ec,
+  addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, commitments, consumerRate, creditLimit, dev, ec, endCommitment,
   endBusiness, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, liquid, log, loseJob, makeStock, netWorth, pay,
   priceToIncome, propertyValue, raiseCash, rebalance, realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock,
   stockValue, totalDebt, usdPremium,
@@ -343,12 +343,14 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     const q = deathProbability(s.birthCountry, s.year, i === 0 ? "F" : "M", pAge, referenceHealth(pAge) + (s.parents.incomeMult - 1) * 4);
     if (r.chance(q)) {
       s.parents.alive[i] = false;
-      delete s.flags[`care${i}`];
+      for (const k of [`care${i}`, `careFee${i}`, `careHard${i}`]) delete s.flags[k];
+      endCommitment(s, `careHelp${i}`);
       bump(s, "happiness", s.age < 18 ? -12 : -8);
       log(s, `Your ${i === 0 ? "mother" : "father"} dies at ${pAge}.`, "bad");
       if (!s.parents.alive[0] && !s.parents.alive[1]) {
         // siblings who did the caring get more of what's left
-        const estate = ((Math.max(0, s.parents.wealthMult) * w) / (s.siblings + 1)) * (s.flags.careLeft ? 0.5 : 1);
+        const left = s.flags.careLeft === "helped" ? 0.75 : s.flags.careLeft ? 0.5 : 1;
+        const estate = ((Math.max(0, s.parents.wealthMult) * w) / (s.siblings + 1)) * left;
         if (estate > 0.05 * w) {
           if (s.age >= 18) invest(s, estate);
           else s.cashHome += estate;
@@ -363,10 +365,10 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   // ---- care for a frail parent: their savings pay first, then the state's share, then you and your siblings
   for (const i of [0, 1] as const) {
     const mode = s.flags[`care${i}`];
-    if ((mode !== "home" && mode !== "together") || !s.parents.alive[i]) continue;
+    if ((mode !== "home" && mode !== "together" && mode !== "livein") || !s.parents.alive[i]) continue;
     const who = i === 0 ? "mother" : "father";
-    // living with you, they need a carer only by day
-    const cost = careCost(s) * (mode === "together" ? 0.25 : 1);
+    // living with you, they need a carer only by day; a live-in carer costs less than a care home
+    const cost = careCost(s) * (mode === "together" ? 0.25 : mode === "livein" ? 0.6 : 1) * Number(s.flags[`careFee${i}`] ?? 1);
     const fromParents = Math.min(cost, Math.max(0, s.parents.wealthMult * w));
     s.parents.wealthMult -= fromParents / w;
     const share = ((cost - fromParents) * (1 - careAid(s))) / (s.siblings + 1);
@@ -376,10 +378,15 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       log(s, `Your share of your ${who}'s care this year: ${fmt(s, paid)}.`, "money");
     }
   }
-  if (s.flags.care0 === "self" || s.flags.care1 === "self") {
+  const care = [s.flags.care0, s.flags.care1];
+  if (care.includes("self")) {
     bump(s, "happiness", -2);
     bump(s, "health", -1);
-  } else if (s.flags.care0 === "together" || s.flags.care1 === "together") bump(s, "happiness", -1);
+  } else if (care.includes("together") || care.includes("shared")) bump(s, "happiness", -1);
+  if (s.flags.careHard0 || s.flags.careHard1) {
+    bump(s, "happiness", -1);
+    bump(s, "health", -1);
+  }
 
   // ---- money that falls due this year
   for (const d of (s.dues ?? []).filter((x) => x.year <= s.year)) {
@@ -410,11 +417,20 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   if (s.recurring?.length) s.recurring = s.recurring.filter((x) => x.until >= s.year);
 
   // ---- partner
+  if (s.flags.partnerBack != null && Number(s.flags.partnerBack) <= s.year) {
+    if (s.partner && !s.partner.working) {
+      s.partner.working = true;
+      s.partner.mult *= 0.85;
+      log(s, `${s.partner.name} goes back to work.`, "neutral");
+    }
+    delete s.flags.partnerBack;
+  }
   if (s.partner && s.age >= 40) {
     const q = deathProbability(s.country, s.year, s.sex === "M" ? "F" : "M", s.age, referenceHealth(s.age));
     if (r.chance(q)) {
       log(s, `${s.partner.name} dies.`, "bad");
       s.partner = null;
+      delete s.flags.partnerBack;
       bump(s, "happiness", -18);
     }
   }
@@ -431,6 +447,17 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       log(s, `The scheme collapses. The ${fmt(s, amt)} you put in is gone.`, "bad");
       s.counters.scams++;
       bump(s, "happiness", -10);
+      if (s.flags.ponziRecruited) {
+        bump(s, "network", -15);
+        bump(s, "happiness", -8);
+        log(s, "The friends and family you brought in lose everything too. Some never speak to you again.", "bad");
+        if (r.chance(0.25)) {
+          const paid = 0.5 * w - pay(s, 0.5 * w);
+          addMove(s, "ev:Sued by the people you recruited", -paid);
+          log(s, `Some of them sue you. It costs ${fmt(s, paid)}.`, "bad");
+        }
+        delete s.flags.ponziRecruited;
+      }
       delete s.flags.ponziEnd;
       delete s.flags.ponziAmt;
     }
@@ -438,9 +465,13 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   for (const st of s.stocks) {
     if (st.illiquid && st.alive && st.exitYear === s.year) {
       const mult = st.cost > 0 ? st.value / st.cost : 0;
+      if (mult >= 2) {
+        enqueue(s, "startup_exit", { id: st.id });
+        continue;
+      }
       invest(s, st.value);
       st.alive = false;
-      log(s, mult > 3 ? `${st.name} is acquired! Your stake comes back as ${fmt(s, st.value)} (${mult.toFixed(0)}×).` : mult > 0.5 ? `${st.name} is sold for a modest sum. You get ${fmt(s, st.value)}.` : `${st.name} winds down. You get back ${fmt(s, st.value)}.`, mult > 1 ? "good" : "bad");
+      log(s, mult > 0.5 ? `${st.name} is sold for a modest sum. You get ${fmt(s, st.value)}.` : `${st.name} winds down. You get back ${fmt(s, st.value)}.`, mult > 1 ? "good" : "bad");
     }
   }
   s.stocks = s.stocks.filter((st) => st.alive);
@@ -508,7 +539,14 @@ const EVENT_ORDER = EVENTS.map((_, i) => i);
 
 function rollEvents(s: LifeState, e: YearEcon): void {
   const c: EventCtx = { e, prev: ec(s, s.year - 1), w: e.wage, r: stream(s.seed, "chance", s.year) };
-  let random = 0;
+  // decisions that come back from earlier choices...
+  const due = (s.followUps ?? []).filter((f) => f.year <= s.year);
+  if (due.length) {
+    s.followUps = s.followUps!.filter((f) => f.year > s.year);
+    for (const f of due) enqueue(s, f.event, f.payload);
+  }
+  // ...take the place of this year's chance events
+  let random = s.pending.filter((d) => EVENT_MAP[d.event].followUp).length;
   // one chance event a year, now and then two; career, family and health events always get their turn
   const cap = stream(s.seed, "cap", s.year).next() < 0.35 ? 2 : 1;
   // a fresh order each year, so no event crowds out the ones after it
@@ -583,7 +621,7 @@ export function resolveYear(s: LifeState): void {
     addMove(s, "bank", -applyDepositShock(s));
     // ---- income
     const care = [s.flags.care0, s.flags.care1];
-    const caring = care.includes("self") ? 0.4 : care.includes("together") ? 0.15 : 0;
+    const caring = care.includes("self") ? 0.4 : care.includes("shared") ? 0.2 : care.includes("together") ? 0.15 : 0;
     const cut = Math.max(Number(s.flags.incomeCut ?? 0), caring);
     let labor = s.job ? s.job.mult * w * (1 - cut) : 0;
     if (s.flags.hustleUntil && s.year <= Number(s.flags.hustleUntil)) labor += 0.15 * w;
@@ -640,8 +678,9 @@ export function resolveYear(s: LifeState): void {
       interestPaid += interest;
     }
     if (s.consumerDebt > 0) {
-      const principal = s.consumerDebt * 0.15;
-      const interest = s.consumerDebt * consumerRate(s);
+      const cheap = Number(s.flags.cheapDebtUntil ?? 0) >= s.year; // a consolidation loan: half the rate, cleared in three years
+      const principal = s.consumerDebt * (cheap ? 0.34 : 0.15);
+      const interest = s.consumerDebt * consumerRate(s) * (cheap ? 0.5 : 1);
       debtService += interest + principal;
       interestPaid += interest;
       s.consumerDebt -= principal;

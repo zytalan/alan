@@ -79,6 +79,16 @@ export function addDue(s: LifeState, d: Due): void {
   s.dues = [...(s.dues ?? []).filter((x) => x.key !== d.key), d];
 }
 
+/** Bring a decision back in a later year, because of something chosen now. */
+export function followUp(s: LifeState, event: string, years: number, payload: Record<string, unknown> = {}): void {
+  s.followUps = [...(s.followUps ?? []), { event, year: s.year + years, payload }];
+}
+
+/** End a commitment now. */
+export function endCommitment(s: LifeState, key: string): void {
+  s.recurring = (s.recurring ?? []).filter((x) => x.key !== key);
+}
+
 /** The commitments running this year. */
 export function commitments(s: LifeState): Recurring[] {
   return (s.recurring ?? []).filter((x) => x.until >= s.year && (!x.needsJob || (s.job && !s.retired)));

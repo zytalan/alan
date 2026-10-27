@@ -95,6 +95,7 @@ describe("a parent who needs care", () => {
       s.parents.wealthMult = 10;
       s.parents.ageAtBirth = [45, 30];
       decideCare(s, left ? "siblings" : "self"); // neither touches her savings
+      s.followUps = []; // and the arrangement holds until she dies
       runLife(s, typical, (x) => !x.parents.alive[0]); // stops in the year she dies, before it's written up
       return (s.yr.moves?.inherit ?? 0) / econ("USA", s.macroSeed, s.year).wage;
     };

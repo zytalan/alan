@@ -112,6 +112,13 @@ export interface Recurring {
   happiness?: number;
 }
 
+/** A decision that comes back in a later year because of an earlier choice: a friend's loan, a tenant, a startup's sale. */
+export interface FollowUp {
+  event: string;
+  year: number;
+  payload: Record<string, unknown>;
+}
+
 /** Money that arrives, or falls due, in a later year: a renovation sold, a savings circle's pot, a loan you co-signed. */
 export interface Due {
   key: string;
@@ -320,6 +327,7 @@ export interface LifeState {
   flags: Record<string, number | string | boolean>;
   recurring?: Recurring[];
   dues?: Due[];
+  followUps?: FollowUp[];
   answers: Record<string, string>;
   pending: Decision[];
   log: LogEntry[];

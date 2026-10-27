@@ -53,6 +53,24 @@ describe("the deck", () => {
     expect(narrow / decisions).toBeLessThan(0.1);
   });
 
+  it("changes a decision when it comes back, and brings earlier choices back as new ones", () => {
+    let identical = 0;
+    let followUps = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const seen = new Set<string>();
+      const rec: Chooser = (s, d) => {
+        const sig = `${d.event}|${d.options.map((o) => o.label).join("|")}`;
+        if (seen.has(sig)) identical++;
+        seen.add(sig);
+        if (EVENT_MAP[d.event].followUp) followUps++;
+        return typical(s, d);
+      };
+      runLife(newGame({ mode: "random", seed, yearDraw: "births" }), rec);
+    }
+    expect(identical / 60).toBeLessThan(7.5); // 10.2 a life when promotions, illnesses and layoffs asked the same thing every time
+    expect(followUps / 60).toBeGreaterThan(1.2);
+  });
+
   it("makes chance events rarer each time they come back", () => {
     let lotteries = 0;
     for (let seed = 1; seed <= 60; seed++) {
