@@ -1,13 +1,16 @@
-import { FIELD_NAMES } from "./content/occupations";
+import { FIELD_NAMES, TRADE_COURSE } from "./content/occupations";
 import { UNIVERSITY_CLOSED } from "./history";
-import { bump, clamp, dev, eduAtLeast, log, W } from "./ops";
-import type { Edu, Field, LifeState } from "./types";
+import { bump, clamp, dev, ec, eduAtLeast, log, W } from "./ops";
+import { econ } from "./macro";
+import type { Edu, Field, LifeState, Trade } from "./types";
 import { nearest } from "./world";
 
 const TUITION: Record<string, number> = { USA: 0.35, AUS: 0.15, CAN: 0.15, NZL: 0.15, JPN: 0.2, KOR: 0.18, CHN: 0.08, IND: 0.15, CHL: 0.25, PHL: 0.15 };
 
-export function tuitionPerYear(s: LifeState, kind: Edu, abroad = false): number {
+export function tuitionPerYear(s: LifeState, kind: Edu, abroad = false, trade?: Trade): number {
   if (kind === "primary" || kind === "secondary") return 0;
+  // flying lessons are priced in dollars everywhere: about $45,000 a year in the US in 2020
+  if (trade === "flying") return 0.93 * econ("USA", s.macroSeed, s.year).wage * ec(s).fx;
   let f = TUITION[s.country] ?? (dev(s) >= 0.75 ? 0.03 : 0.12);
   if (s.country === "GBR") f = s.year >= 2012 ? 0.3 : s.year >= 1998 ? 0.1 : 0.02;
   if (kind === "vocational") f *= 0.5;
@@ -37,8 +40,8 @@ export function schoolYears(kind: Edu, field?: Field): number {
   return 6;
 }
 
-export function startSchool(s: LifeState, kind: Edu, field?: Field, abroad = false): void {
-  s.school = { kind, yearsLeft: schoolYears(kind, field), cost: tuitionPerYear(s, kind, abroad), field };
+export function startSchool(s: LifeState, kind: Edu, field?: Field, abroad = false, trade?: Trade): void {
+  s.school = { kind, yearsLeft: schoolYears(kind, field), cost: tuitionPerYear(s, kind, abroad, trade), field, trade };
   if (field) s.field = field;
   if (abroad) s.flags.studiedAbroad = true;
 }
@@ -49,6 +52,8 @@ export function graduate(s: LifeState): Edu {
   let reached: Edu = sc.kind;
   if (sc.kind === "bachelor" && sc.field === "medicine") reached = "doctorate";
   if (!eduAtLeast(s.edu, reached)) s.edu = reached; // retraining never takes away a degree you already have
+  if (sc.trade) s.trade = sc.trade;
+  delete s.flags.abroad; // the next course is priced at home unless you go abroad again
   s.school = null;
   const gain: Partial<Record<Edu, number>> = { vocational: 6, bachelor: 10, master: 8, doctorate: 10 };
   bump(s, "skill", gain[reached] ?? 3);
@@ -56,7 +61,7 @@ export function graduate(s: LifeState): Edu {
   const what: Partial<Record<Edu, string>> = {
     primary: "You finish primary school.",
     secondary: "You finish secondary school.",
-    vocational: "You finish your vocational training.",
+    vocational: sc.trade ? `You finish ${TRADE_COURSE[sc.trade]}.` : "You finish your vocational training.",
     bachelor: `You graduate in ${FIELD_NAMES[s.field ?? "general"]}.`,
     master: "You earn a master's degree.",
     doctorate: sc.field === "medicine" ? "You qualify as a doctor." : "You earn a doctorate.",

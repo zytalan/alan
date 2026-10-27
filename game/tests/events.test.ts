@@ -59,7 +59,8 @@ describe("the deck", () => {
     for (let seed = 1; seed <= 60; seed++) {
       const seen = new Set<string>();
       const rec: Chooser = (s, d) => {
-        const sig = `${d.event}|${d.options.map((o) => o.label).join("|")}`;
+        // where to look for work is a fixed list of areas: what changes is what each holds for you
+        const sig = `${d.event}|${d.options.map((o) => (d.event === "job_area" ? (o.disabled ?? o.hint) : o.label)).join("|")}`;
         if (seen.has(sig)) identical++;
         seen.add(sig);
         if (EVENT_MAP[d.event].followUp) followUps++;

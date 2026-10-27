@@ -5,7 +5,8 @@
 
 import { advance, choose, createLife, setTwinHook } from "./life";
 import { toIntl2021 } from "./macro";
-import { dev, liquid, log, retirementAge } from "./ops";
+import { OCC } from "./content/occupations";
+import { dev, liquid, log, retirementAge, trainedFor, type Offer } from "./ops";
 import { stream } from "./rng";
 import type { Decision, LifeState, Setup } from "./types";
 import { country, countryIn, countryIsos } from "./world";
@@ -20,10 +21,27 @@ function enabled(d: Decision): string[] {
   return d.options.filter((o) => !o.disabled).map((o) => o.id);
 }
 
+/** One of the open options, drawn by how common each choice is. */
+function byShare(ok: string[], r: number, share: Record<string, number>): string {
+  const total = ok.reduce((a, id) => a + (share[id] ?? 0.1), 0);
+  let x = r * total;
+  for (const id of ok) if ((x -= share[id] ?? 0.1) < 0) return id;
+  return ok[0];
+}
+
 function prefer(d: Decision, ...ids: string[]): string {
   const ok = enabled(d);
   for (const id of ids) if (ok.includes(id)) return id;
   return ok[0] ?? d.options[0].id;
+}
+
+/** The best-paid offer, unless one in the work you trained for pays nearly as much. */
+function bestOffer(s: LifeState, d: Decision): string {
+  const offers = (d.payload.offers as Offer[] | undefined) ?? [];
+  if (!offers.length) return prefer(d, "back", "wait");
+  const top = offers[0].mult;
+  const trained = offers.findIndex((of) => trainedFor(s, OCC[of.occ]) && of.mult >= 0.85 * top);
+  return `o${Math.max(0, trained)}`;
 }
 
 export const typical: Chooser = (s, d) => {
@@ -31,13 +49,16 @@ export const typical: Chooser = (s, d) => {
   const ok = enabled(d);
   const region = country(s.country).r;
   switch (d.event) {
-    case "choose_field": {
+    case "choose_field":
       // roughly how students split across majors
-      const share: Record<string, number> = { business: 0.25, stem: 0.17, arts: 0.17, education: 0.14, cs: 0.12, medicine: 0.08, law: 0.07 };
-      const total = ok.reduce((a, id) => a + (share[id] ?? 0.1), 0);
-      let x = r * total;
-      for (const id of ok) if ((x -= share[id] ?? 0.1) < 0) return id;
-      return ok[0];
+      return byShare(ok, r, { business: 0.25, stem: 0.17, arts: 0.17, education: 0.14, cs: 0.12, medicine: 0.08, law: 0.07 });
+    case "choose_trade":
+      // ...and trainees across trades
+      return byShare(ok, r, { nursing: 0.15, electrical: 0.15, hospitality: 0.15, mechanics: 0.13, it: 0.12, care: 0.12, beauty: 0.1, design: 0.06, flying: 0.02 });
+    case "job_area": {
+      // most people look in the line of work they know; the rest take whatever's going
+      const mine = ((d.payload.mine as string[] | undefined) ?? []).filter((id) => ok.includes(id));
+      return mine.length && r < 0.75 ? mine[0] : "any";
     }
     case "temperament":
     case "school_focus":
@@ -62,7 +83,7 @@ export const typical: Chooser = (s, d) => {
     case "grad_next":
       return r < 0.15 ? prefer(d, "master", "work") : "work";
     case "first_job":
-      return prefer(d, "o0");
+      return bestOffer(s, d);
     case "job_offer":
       if (r < 0.12) return "counter";
       return r < 0.3 ? prefer(d, "bonus", "remote", "take") : "take";
@@ -336,7 +357,7 @@ export const steady: Chooser = (s, d) => {
     case "after_school":
       return prefer(d, "uni", "voc", "work");
     case "first_job":
-      return prefer(d, "o0");
+      return bestOffer(s, d);
     case "crypto_discovery":
     case "crypto_later":
       return "no";

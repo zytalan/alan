@@ -4,17 +4,17 @@
 // option is applied by looking the event up again.
 
 import { BIZ, BUSINESSES } from "./content/business";
-import { FIELD_NAMES, MAJORS, majorOpen, OCC, titleAt } from "./content/occupations";
+import { FIELD_NAMES, MAJORS, majorOpen, OCC, titleAt, TRADE_COURSE, TRADE_NAMES, TRADES, tradeOpen } from "./content/occupations";
 import { givenName, nameGroupFor } from "./content/names";
 import { pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
-import { industryGrowth, INDUSTRY_NAMES, recentGrowth } from "./labour";
+import { AREA_OF, AREAS, industryGrowth, INDUSTRY_NAMES, recentGrowth, type Area, type Industry } from "./labour";
 import { econ, type YearEcon } from "./macro";
 import { referenceHealth } from "./mortality";
 import { liquidateDesk, shrinkDesk } from "./desk";
 import {
-  addDue, adult, annuity, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, commit, commitments, consumerRate, dev, ec,
-  eduAtLeast, employerFor, endBusiness, endCommitment, followUp, jobIndustry, startingPay,
+  addDue, adult, annuity, areaChoices, areaGrowth, buyProperty, buyStock, bump, canStartBusiness, careAid, careCost, clamp, commit, commitments, consumerRate, dev, ec,
+  eduAtLeast, employerFor, endBusiness, endCommitment, followUp, jobIndustry, searchOffers, startingPay, type AreaChoice,
   fmt, homePrice, invest, liquid, log, loseJob, makeOffers, makeStock, mortgageQuote, mortgageRate, netWorth, pay, payCeiling, payMultiple, raiseCash,
   rebalance, retirementAge, salary, sellProperty, startBusiness, stockValue, takeJob, W, type Offer,
 } from "./ops";
@@ -22,7 +22,7 @@ import { stream, type Rng } from "./rng";
 import { admissionChance, schoolYears, startSchool, tuitionPerYear, universityClosed } from "./school";
 import {
   ASSET_KEYS, type Allocation, type AssetKey, type BizType, type Decision, type DecisionOption, type Edu, type Field,
-  type LifeState, type Stock,
+  type LifeState, type Stock, type Trade,
 } from "./types";
 import { country, countryIn, countryIsos, devLevel, nearest } from "./world";
 
@@ -142,14 +142,40 @@ function upperFirst(text: string): string {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
-/** "an accountant", "a nurse" */
+/** A job title inside a sentence: lower case, except acronyms like IT and HR. */
+function lc(title: string): string {
+  return /^[A-Z]{2}/.test(title) ? title : title[0].toLowerCase() + title.slice(1);
+}
+
+/** "an accountant", "a nurse", "an IT technician" */
 function aTitle(title: string): string {
-  const t = title.toLowerCase();
-  return `${/^[aeiou]/.test(t) ? "an" : "a"} ${t}`;
+  const t = lc(title);
+  return `${/^[aeiou]|^[AEFHILMNORSX][A-Z]/.test(t) ? "an" : "a"} ${t}`;
 }
 
 function offerLine(of: Offer): string {
   return `${of.title} at ${of.employer}`;
+}
+
+/** What an area holds for you: whether it's yours, the work you'd most likely get, its pay and how its hiring went last year. */
+function areaHint(s: LifeState, a: AreaChoice, w: number): string {
+  const tag = a.mine === "work" ? (s.job ? "Where you work now" : "Where you worked") : a.mine === "study" ? (eduAtLeast(s.edu, "bachelor") ? "What you studied" : "What you trained for") : "";
+  const jobs = a.jobs.slice(0, 3).map(lc).join(", ") + (a.jobs.length > 3 ? ` and ${a.jobs.length - 3} more` : "");
+  const [lo, hi] = a.pay;
+  const pay = hi <= lo * 1.08 ? fmt(s, lo * w) : `${fmt(s, lo * w)}–${fmt(s, hi * w)}`;
+  return [tag, jobs, `${s.workYears > 0 ? "pays" : "starts at"} about ${pay}`, `jobs ${signedPct(a.hiring)} last year`].filter(Boolean).join(" · ");
+}
+
+/** Every job search starts with where to look; with only one place open, it goes straight to the openings there. */
+export function lookForWork(s: LifeState, payload: Record<string, unknown> = {}): void {
+  const open = areaChoices(s, (payload.shut as Area[] | undefined) ?? []).filter((a) => !a.closed);
+  if (open.length <= 1) enqueue(s, "first_job", { ...payload, area: open[0]?.id ?? null });
+  else enqueue(s, "job_area", payload);
+}
+
+/** Back to school: a graduate to a higher degree, anyone else to the choice school leavers get. */
+export function backToSchool(s: LifeState): void {
+  enqueue(s, s.edu === "bachelor" || s.edu === "master" ? "grad_next" : "after_school");
 }
 
 const MIGRATION: Record<string, string[]> = {
@@ -440,7 +466,7 @@ const DEFS: EventDef[] = [
         s.edu = "primary";
         s.parents.incomeMult *= 1.08;
         log(s, "You leave school to work.", "neutral");
-        enqueue(s, "first_job");
+        lookForWork(s);
       }
     },
   },
@@ -587,13 +613,13 @@ const DEFS: EventDef[] = [
         }
       } else if (opt === "voc") {
         if (c.r.chance(Number(p.pVoc))) {
-          startSchool(s, "vocational");
-          log(s, "You start vocational training.", "neutral");
+          log(s, "You get a place on a training course.", "good");
+          enqueue(s, "choose_trade");
         } else {
           log(s, "There are no places left on the course.", "bad");
-          enqueue(s, "first_job");
+          lookForWork(s);
         }
-      } else if (opt === "work") enqueue(s, "first_job");
+      } else if (opt === "work") lookForWork(s);
       else if (opt === "stall") {
         enqueue(s, "start_business", { only: "stall" });
       } else if (opt === "abroad") {
@@ -614,8 +640,8 @@ const DEFS: EventDef[] = [
       if (opt === "retake") {
         bump(s, "skill", 5);
         s.flags.retakeYear = s.year + 1;
-      } else if (opt === "voc") startSchool(s, "vocational");
-      else enqueue(s, "first_job");
+      } else if (opt === "voc") enqueue(s, "choose_trade");
+      else lookForWork(s);
     },
   },
   {
@@ -630,7 +656,7 @@ const DEFS: EventDef[] = [
         return o(
           m.field,
           FIELD_NAMES[m.field],
-          `${years} years · new ${job.title.toLowerCase()}s earn about ${fmt(s, startingPay(s, job) * c.w)} · ${INDUSTRY_NAMES[job.industry]} jobs ${signedPct(hiring)} a year lately`,
+          `${years} years · new ${lc(job.title)}s earn about ${fmt(s, startingPay(s, job) * c.w)} · ${INDUSTRY_NAMES[job.industry]} jobs ${signedPct(hiring)} a year lately`,
           m.need > s.stats.skill && `Needs skill ${m.need}+`,
         );
       });
@@ -644,6 +670,41 @@ const DEFS: EventDef[] = [
     resolve: (s, _c, p, opt) => {
       startSchool(s, "bachelor", opt as Field, Boolean(p.abroad));
       log(s, `You start a degree in ${FIELD_NAMES[opt]}${p.abroad ? " abroad" : ""}.`, "milestone");
+    },
+  },
+  {
+    id: "choose_trade",
+    tag: "life",
+    build: (s, c, p) => {
+      // what a trainee could know: what the newly qualified earn, and how hiring has gone lately
+      const parents = s.parents.alive[0] || s.parents.alive[1];
+      const family = parents ? clamp(s.familyPct ** 1.2 * 1.3, 0, 1) : 0;
+      const loans = s.access.bank && dev(s) >= 0.55;
+      const options = TRADES.filter((t) => tradeOpen(t.trade, s.year, dev(s))).map((t) => {
+        const job = OCC[t.job];
+        const fee = tuitionPerYear(s, "vocational", false, t.trade);
+        const hiring = recentGrowth(s.country, s.year, job.industry, s.macroSeed);
+        // the trained start above the untrained in work that doesn't require the training
+        const start = startingPay(s, job) * (!job.fields && !job.trades ? 1.15 : 1);
+        // a student loan stretches to about two years' wages; beyond that the family or your savings must pay
+        const tooDear = fee > c.w && !(loans && fee <= 2 * c.w) && family < 0.7 && liquid(s) < 2 * fee && `Costs ${fmt(s, fee)} a year — more than you can raise`;
+        return o(
+          t.trade,
+          TRADE_NAMES[t.trade],
+          `2 years${fee >= 0.05 * c.w ? ` · ${fmt(s, fee)} a year` : ""} · new ${lc(job.title)}s earn about ${fmt(s, start * c.w)} · ${INDUSTRY_NAMES[job.industry]} jobs ${signedPct(hiring)} a year lately`,
+          (t.need > s.stats.skill && `Needs skill ${t.need}+`) || tooDear,
+        );
+      });
+      return {
+        title: "Pick a trade",
+        body: p.retrain ? "You're starting again. What will you train for?" : "What will you train for?",
+        options,
+        payload: p,
+      };
+    },
+    resolve: (s, _c, _p, opt) => {
+      startSchool(s, "vocational", undefined, false, opt as Trade);
+      log(s, `You start ${TRADE_COURSE[opt as Trade]}.`, "milestone");
     },
   },
   {
@@ -672,30 +733,80 @@ const DEFS: EventDef[] = [
         log(s, "You start a doctorate.", "neutral");
       } else {
         if (opt !== "work") log(s, "You don't get in. Time to find a job.", "bad");
-        enqueue(s, "first_job");
+        lookForWork(s);
       }
     },
   },
   // ------------------------------------------------------------- career
   {
+    id: "job_area",
+    tag: "career",
+    build: (s, c, p) => {
+      const areas = areaChoices(s, (p.shut as Area[] | undefined) ?? []);
+      const work = areas.find((a) => a.mine === "work");
+      const study = areas.find((a) => a.mine === "study");
+      const ind = s.job ? jobIndustry(s) : (s.flags.lastInd as Industry | undefined);
+      const years = Math.round((ind && s.indYears?.[ind]) || 0);
+      const intro = p.body
+        ? String(p.body)
+        : work
+          ? `You've worked in ${work.name.toLowerCase()} for ${years} years.`
+          : study && s.field && eduAtLeast(s.edu, "bachelor")
+            ? `You have a degree in ${FIELD_NAMES[s.field].toLowerCase()}.`
+            : study && s.trade
+              ? `You've finished ${TRADE_COURSE[s.trade]}.`
+              : "You're looking for work.";
+      return {
+        title: p.title ? String(p.title) : s.job ? "Job hunting" : s.workYears > 0 ? "Looking for work" : "Your first job",
+        body: `${intro} Where do you look?`,
+        options: [
+          ...areas.map((a) => o(a.id, a.name, areaHint(s, a, c.w), a.closed)),
+          o("any", "Anything going", "Whatever's hiring, in any line of work"),
+        ],
+        payload: { ...p, mine: areas.filter((a) => a.mine && !a.closed).map((a) => a.id) },
+      };
+    },
+    resolve: (s, _c, p, opt) => enqueue(s, "first_job", { ...p, area: opt === "any" ? null : opt, asked: true }),
+  },
+  {
     id: "first_job",
     tag: "career",
     build: (s, c, p) => {
-      // a year spent looking turns up better offers
-      const offers = makeOffers(s, c.r, s.flags.searching === s.year ? 5 : 3).slice(0, 3);
-      if (!offers.length) offers.push({ occ: "laborer", title: "Day laborer", mult: 0.45, employer: "the market" });
+      // the openings in the area you chose, or anywhere; the same search in the same year finds the same ones
+      const area = (p.area as Area | null | undefined) ?? null;
+      const name = area ? AREAS.find((a) => a.id === area)!.name.toLowerCase() : "";
+      const offers = searchOffers(s, area);
+      if (!offers.length && !area) offers.push({ occ: "laborer", title: "Day laborer", mult: 0.45, employer: "the market" });
+      const g = area ? areaGrowth(s, area, s.year) : 0;
+      const mood = !area
+        ? `${c.e.recession ? "Jobs are scarce right now. " : ""}Here's what you can get:`
+        : !offers.length
+          ? `Nobody in ${name} is hiring right now.`
+          : g <= -0.03
+            ? `Jobs in ${name} are scarce right now. Here's what you can get:`
+            : g >= 0.05
+              ? `${upperFirst(name)} is hiring. Here's what you can get:`
+              : `Here's what ${name} has for you:`;
+      const now = s.job?.mult ?? 0;
       return {
-        title: p.title ? String(p.title) : s.job ? "Job hunting" : "Your first job",
-        body: p.body ? String(p.body) : `${c.e.recession ? "Jobs are scarce right now. " : ""}Here's what you can get:`,
+        title: p.title ? String(p.title) : s.job ? "Job hunting" : s.workYears > 0 ? "Looking for work" : "Your first job",
+        body: p.body && !p.asked ? `${String(p.body)} ${mood}` : mood,
         options: [
-          ...offers.map((of, i) => o(`o${i}`, offerLine(of), `${fmt(s, of.mult * c.w)} a year`)),
+          ...offers.map((of, i) => o(`o${i}`, offerLine(of), `${fmt(s, of.mult * c.w)} a year${now ? ` (${signedPct(of.mult / now - 1)} on now)` : ""}`)),
+          ...(area ? [o("back", "Look somewhere else", "Another line of work")] : []),
           o("wait", "Keep looking", "A year without pay, better odds next time"),
         ],
-        payload: { offers },
+        payload: { ...p, offers },
       };
     },
     resolve: (s, _c, p, opt) => {
       const offers = p.offers as Offer[];
+      if (opt === "back") {
+        // an area with nothing for you stays shut for the rest of the year
+        const shut = [...((p.shut as Area[] | undefined) ?? []), ...(offers.length ? [] : [p.area as Area])];
+        enqueue(s, "job_area", { ...p, shut, area: undefined, offers: undefined, asked: undefined });
+        return;
+      }
       if (opt === "wait") {
         s.flags.searching = s.year + 1;
         bump(s, "skill", 1);
@@ -761,7 +872,7 @@ const DEFS: EventDef[] = [
       const of = p.of as Offer;
       if (opt === "take") {
         takeJob(s, of);
-        log(s, `You switch jobs: ${of.title.toLowerCase()} at ${of.employer}.`, "good");
+        log(s, `You switch jobs: ${lc(of.title)} at ${of.employer}.`, "good");
       } else if (opt === "haggle") {
         const roll = c.r.next();
         if (roll < 0.55) {
@@ -786,7 +897,7 @@ const DEFS: EventDef[] = [
         takeJob(s, { ...of, mult: of.mult * 0.95 });
         bump(s, "happiness", 3);
         bump(s, "health", 1);
-        log(s, `You switch jobs, and work from home: ${of.title.toLowerCase()} at ${of.employer}.`, "good");
+        log(s, `You switch jobs, and work from home: ${lc(of.title)} at ${of.employer}.`, "good");
       } else if (opt === "counter" && s.job) {
         const roll = c.r.next();
         if (roll < 0.45) {
@@ -837,7 +948,7 @@ const DEFS: EventDef[] = [
           title: c.r.pick([`Nobody in ${INDUSTRY_NAMES[ind]} is hiring`, "Laid off in a bust"]),
           body: `${why} You lose your job as ${aTitle(s.job!.title)}. Jobs in ${INDUSTRY_NAMES[ind]} here are down ${pct(-g, 0)} this year, and nobody in it is hiring.${sevLine}`,
           options: [
-            o("outside", "Take work outside your field", "Lower pay, for now"),
+            o("outside", "Look for work outside your field", "Another line of work, starting lower"),
             o("wait", `Wait for ${INDUSTRY_NAMES[ind]} to recover`, "A year or more without pay"),
             o("study", "Retrain for a growing field", s.age > 45 ? undefined : "Back to school", s.age > 45 && "Too late for that"),
             o("freelance", "Freelance in your old line of work", "Some income, no security"),
@@ -866,7 +977,7 @@ const DEFS: EventDef[] = [
         body: `${why} You lose your job as ${aTitle(s.job!.title)}, ${before === 1 ? "the second time this has happened to you" : `${before + 1} times now`}.${sevLine}`,
         options: [
           o("quick", "Take the first job you can find", "Lower pay"),
-          o("safe", safe ? `Become ${aTitle(safe.title.toLowerCase())}` : "Find something safer", safe ? `${fmt(s, safeMult * c.w)} a year, and jobs like it rarely go` : undefined, !safe && "Nothing safer is hiring people like you"),
+          o("safe", safe ? `Become ${aTitle(safe.title)}` : "Find something safer", safe ? `${fmt(s, safeMult * c.w)} a year, and jobs like it rarely go` : undefined, !safe && "Nothing safer is hiring people like you"),
           s.age >= 55
             ? o("early", s.age >= retirementAge(s) ? "Retire" : "Retire early", s.age >= retirementAge(s) ? "Your pension, starting now" : "A smaller pension, starting now")
             : o("study", "Retrain for a growing field", s.age > 45 ? undefined : "Back to school", s.age > 45 && "Too late for that"),
@@ -886,11 +997,7 @@ const DEFS: EventDef[] = [
       bump(s, "happiness", -6);
       log(s, "You're out of work.", "bad");
       if (opt === "outside") {
-        const of = makeOffers(s, c.r, 6).find((x) => OCC[x.occ].industry !== p.ind);
-        if (of) {
-          takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 0.8) });
-          log(s, `You take a job outside your field, as ${aTitle(of.title)}.`, "neutral");
-        }
+        lookForWork(s, { title: "Outside your field", body: "Your old line of work isn't hiring.", shut: [AREA_OF[p.ind as Industry]] });
       } else if (opt === "wait") s.flags.searching = s.year + 1;
       else if (opt === "freelance") commit(s, { key: "freelance", label: "Freelance work", wage: 0.35 * lastMult, until: s.year + 1, happiness: -1 });
       else if (opt === "quick") {
@@ -919,7 +1026,7 @@ const DEFS: EventDef[] = [
         s.retired = true;
         log(s, early ? `You retire early, at ${s.age}.` : `You retire at ${s.age}.`, "milestone");
       } else if (opt === "search") s.flags.searching = s.year + 1;
-      else if (opt === "study") enqueue(s, "grad_next");
+      else if (opt === "study") backToSchool(s);
       else enqueue(s, "start_business");
     },
   },
@@ -941,7 +1048,7 @@ const DEFS: EventDef[] = [
       const ceiling = payCeiling(s, occ);
       if (!toExec && j.mult >= ceiling) return null;
       const base = { occ: j.occ, title: j.title, from: j.occ, since: s.year - j.years };
-      const next = titleAt(occ, j.level + 1).toLowerCase();
+      const next = lc(titleAt(occ, j.level + 1));
       // the same work a rung higher: each offer in a job asks something different
       const stage = toExec ? 0 : Math.min(3, Number(s.flags["n:promotion"] ?? 0));
       if (stage === 1) {
@@ -1069,7 +1176,7 @@ const DEFS: EventDef[] = [
         run: "You take charge of the department.",
         share: "You and a colleague run the department together.",
       };
-      log(s, done[opt] ?? `Promoted — you're now ${aTitle(job.title.toLowerCase())}.`, "good");
+      log(s, done[opt] ?? `Promoted — you're now ${aTitle(job.title)}.`, "good");
     },
   },
   {
@@ -2132,7 +2239,7 @@ const DEFS: EventDef[] = [
       moveCountry(s, dest);
       followUp(s, "homesick", 2, { from: home });
       log(s, `You leave ${countryIn(home)} for ${countryIn(dest)}.`, "milestone");
-      enqueue(s, "first_job", { title: "A new country", body: "Your qualifications don't fully count here yet. Here's what's on offer:" });
+      lookForWork(s, { title: "A new country", body: "Your qualifications don't fully count here yet." });
     },
   },
   {
@@ -2161,7 +2268,7 @@ const DEFS: EventDef[] = [
         s.flags.refugee = true;
         bump(s, "happiness", -15);
         log(s, `You flee to ${countryIn(dest)} with almost nothing.`, "bad");
-        enqueue(s, "first_job", { title: "Starting over", body: "As a refugee, you take what work you can find:" });
+        lookForWork(s, { title: "Starting over", body: "As a refugee, you take what work you can find." });
       } else if (opt === "rural") {
         if (s.job) loseJob(s);
         bump(s, "health", -5);
@@ -2819,11 +2926,11 @@ const DEFS: EventDef[] = [
       const occ = OCC[s.job!.occ];
       const related = occ.related ? OCC[occ.related] : null;
       return {
-        title: `Fewer people need ${occ.title.toLowerCase()}s`,
+        title: `Fewer people need ${lc(occ.title)}s`,
         body: `${occ.fadeWhy} Every year there are fewer jobs like yours.`,
         options: [
           o("retrain", "Retrain for something new", "Two years of training", s.age > 50 && "Too late for that"),
-          ...(related ? [o("move", `Move into work as ${aTitle(related.title.toLowerCase())}`, "Less pay at first, a future")] : []),
+          ...(related ? [o("move", `Move into work as ${aTitle(related.title)}`, "Less pay at first, a future")] : []),
           o("hang", "Hang on as long as you can", "The cuts will come"),
           ...(s.age >= 55 ? [o("early", "Retire early", "A smaller pension, starting now")] : []),
         ],
@@ -2834,12 +2941,12 @@ const DEFS: EventDef[] = [
       const occ = OCC[s.job.occ];
       if (opt === "retrain") {
         loseJob(s);
-        startSchool(s, "vocational");
         log(s, "You go back to school to learn a new trade.", "milestone");
+        enqueue(s, "choose_trade", { retrain: true });
       } else if (opt === "move" && occ.related) {
         const to = OCC[occ.related];
         takeJob(s, { occ: to.id, title: titleAt(to, 0), mult: Math.min(s.job.mult * 0.9, payMultiple(s, to, c.r)), employer: "a new employer", level: 0 });
-        log(s, `You move into work as ${aTitle(to.title.toLowerCase())}.`, "neutral");
+        log(s, `You move into work as ${aTitle(to.title)}.`, "neutral");
       } else if (opt === "early") {
         s.pension = pensionFor(s) * 0.8;
         loseJob(s);
@@ -4126,7 +4233,7 @@ const DEFS: EventDef[] = [
         loseJob(s);
         moveCountry(s, String(p.from));
         log(s, `You leave ${was} and go home to ${countryIn(s.country)}.`, "milestone");
-        enqueue(s, "first_job", { title: "Back home", body: "You're back, with new skills and old friends. Here's what's on offer:" });
+        lookForWork(s, { title: "Back home", body: "You're back, with new skills and old friends." });
       } else if (opt === "bring") {
         pay(s, 0.3 * W(s));
         commit(s, { key: "parentsHere", label: "Your parents, living with you", wage: -0.06, until: s.year + 10, happiness: 1 });
@@ -4277,7 +4384,7 @@ const DEFS: EventDef[] = [
     },
     resolve: (s, c, _p, opt) => {
       if (opt === "none") {
-        if (!s.job && !s.school && s.age < retirementAge(s)) enqueue(s, "first_job");
+        if (!s.job && !s.school && s.age < retirementAge(s)) lookForWork(s);
         return;
       }
       if (startBusiness(s, opt as BizType, c.r)) log(s, `You start ${s.business!.name}, a ${BIZ[opt as BizType].title.toLowerCase()}.`, "milestone");
@@ -4353,7 +4460,7 @@ const DEFS: EventDef[] = [
       endBusiness(s, "sold", price * (1 - gainsTax(s)));
       bump(s, "happiness", 6);
       log(s, `You sell ${name} for ${fmt(s, price)}.`, "good");
-      if (!s.job && !s.retired && s.age < retirementAge(s) - 5) enqueue(s, "first_job", { title: "What's next?", body: "You're free. Want a job?" });
+      if (!s.job && !s.retired && s.age < retirementAge(s) - 5) lookForWork(s, { title: "What's next?", body: "You're free. Want a job?" });
     },
   },
   {
@@ -4381,7 +4488,7 @@ const DEFS: EventDef[] = [
         const name = s.business.name;
         endBusiness(s, "closed", s.business.valuation * 0.2);
         log(s, `You close ${name}.`, "bad");
-        if (!s.job && s.age < retirementAge(s)) enqueue(s, "first_job");
+        if (!s.job && s.age < retirementAge(s)) lookForWork(s);
       }
     },
   },

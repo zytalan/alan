@@ -30,6 +30,22 @@ export const INDUSTRY_NAMES: Record<Industry, string> = {
   agriculture: "farming",
 };
 
+/** The lines of work a job search can look in: industries grouped the way people think of them. */
+export type Area = "tech" | "money" | "industry" | "health" | "public" | "media" | "services" | "farming";
+
+export const AREAS: { id: Area; name: string; industries: Industry[] }[] = [
+  { id: "tech", name: "Technology", industries: ["tech"] },
+  { id: "money", name: "Finance and business", industries: ["finance", "business"] },
+  { id: "industry", name: "Engineering and industry", industries: ["manufacturing", "construction", "energy"] },
+  { id: "health", name: "Health and care", industries: ["health"] },
+  { id: "public", name: "Education and government", industries: ["education", "public"] },
+  { id: "media", name: "Media and design", industries: ["media"] },
+  { id: "services", name: "Shops, hotels, transport and services", industries: ["retail", "hospitality", "transport", "services"] },
+  { id: "farming", name: "Farming", industries: ["agriculture"] },
+];
+
+export const AREA_OF = Object.fromEntries(AREAS.flatMap((a) => a.industries.map((i) => [i, a.id]))) as Record<Industry, Area>;
+
 export interface LabourData {
   y0: number; // first year of the US series
   us: Partial<Record<Industry, (number | null)[]>>; // yearly job growth, tenths of a percent

@@ -14,7 +14,7 @@ export {
 } from "./ops";
 export { industryGrowth, INDUSTRY_NAMES, type Industry } from "./labour";
 export { money, usd, pct, signedPct, oneIn, topPercent, ordinal } from "./format";
-export { FIELD_NAMES, OCC } from "./content/occupations";
+export { FIELD_NAMES, OCC, TRADE_NAMES } from "./content/occupations";
 export { BIZ } from "./content/business";
 export { randomSeed } from "./rng";
 export { monthNewsFor, type MonthNews } from "./history";

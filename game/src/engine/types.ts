@@ -5,6 +5,8 @@ export type Mode = "random" | "timetravel";
 export type Era = "past" | "recent" | "now" | "any";
 export type Edu = "none" | "primary" | "secondary" | "vocational" | "bachelor" | "master" | "doctorate";
 export type Field = "cs" | "stem" | "business" | "medicine" | "law" | "education" | "arts" | "general";
+// what vocational training trains you for
+export type Trade = "nursing" | "electrical" | "it" | "hospitality" | "mechanics" | "beauty" | "care" | "design" | "flying";
 export type Lifestyle = "frugal" | "modest" | "comfortable" | "lavish";
 export type AssetKey = "cash" | "usd" | "bonds" | "localEq" | "globalEq" | "gold" | "crypto";
 export type Allocation = Record<AssetKey, number>;
@@ -212,6 +214,7 @@ export interface School {
   yearsLeft: number;
   cost: number; // per year, nominal at start
   field?: Field;
+  trade?: Trade;
 }
 
 export interface DeskPosition {
@@ -301,6 +304,7 @@ export interface LifeState {
   stats: Stats;
   edu: Edu;
   field?: Field;
+  trade?: Trade; // the trade a vocational diploma is in
   school: School | null;
   job: Job | null;
   unemployedYears: number;

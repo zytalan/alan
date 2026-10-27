@@ -23,7 +23,7 @@ how much was you.
 
 ## Decisions
 
-An adult life meets about 60 decisions, drawn from 115 kinds, and almost all have three
+An adult life meets about 60 decisions, drawn from 117 kinds, and almost all have three
 or four ways to answer. Some arrive on cue: what you do after school, a first job, where
 your first savings go, looking back at 30, 50 and 70. The rest come by chance. The order
 is shuffled every year so no event crowds out the others. Career, family and health
@@ -77,15 +77,36 @@ student could know that year: how long the degree takes, what new graduates earn
 fast that industry has been hiring over the last three years. Computer science is taught
 from 1970 in richer countries, 1985 in middle-income ones and 1995 in the poorest, and
 some majors need a minimum skill (medicine 62, law 52, computer science and engineering 45).
+Vocational training picks one of nine trades the same way: nursing, electrician, IT
+support, cooking and hospitality, mechanics, hairdressing, care, graphic design, or flight
+school. IT is taught once IT jobs exist there, and flight school is priced in dollars
+everywhere (about $45,000 a year in the US in 2020), so outside rich countries only a
+well-off family can pay for it.
 
-There are 37 jobs in 15 industries. Most graduates start in the work their major trains
-them for (software for computer science; engineering, civil engineering or oil and gas for
-engineering; accounting, analysis or banking for business), some in work it only
-qualifies them for. Jobs come and go with their era: web developers from 1995, data
-scientists from 2012, fewer typists after the 1980s and fewer bank tellers after 2008.
-Salaried jobs have a five-rung ladder (junior developer, developer, senior, lead, head of
-engineering) that promotions climb, and a few at the top move on to an executive job. Years in the same industry count fully toward pay
-and the rung you're hired at; years elsewhere count half, so changing field costs something.
+There are 62 jobs in 15 industries, grouped into eight areas: technology, finance and
+business, engineering and industry, health and care, education and government, media and
+design, shops, hotels, transport and services, and farming. Every area has work for people
+without a degree, and most have work for a trade or a degree. Most people start in the work
+their major or trade trains them for (software for computer science; engineering, civil
+engineering or oil and gas for engineering; nursing for a nursing course), some in work it
+only qualifies them for. A trade helps even where it isn't required: a trained cook is
+offered more cooking jobs, and paid more, than an untrained one. Jobs come and go with
+their era: web developers from 1995, cybersecurity from 2005, social media managers and
+solar technicians from 2010, delivery riders from 2012, fewer typists after the 1980s and
+fewer bank tellers after 2008. Salaried jobs have a five-rung ladder (junior developer,
+developer, senior, lead, head of engineering) that promotions climb, and a few at the top
+move on to an executive job. Years in the same industry count fully toward pay and the
+rung you're hired at; years elsewhere count half, so changing field costs something.
+
+Every job search, from your first job to the Work tab's "Look for a better job", starts
+by asking where to look. Your field comes first (where you work, then what you studied),
+then the other areas, then "Anything going". Each shows the work you'd most likely be
+offered, what it pays you and how its hiring went last year; an area with nothing open to
+you says why ("Needs nursing training or a degree in medicine"). Then come the openings
+there: four where you trained or worked and three elsewhere in ordinary times, fewer
+when the area is shedding jobs, and none when it is collapsing ("Nobody in technology is
+hiring right now"). You can take one, look somewhere else (an area with nothing stays shut for the
+year, and the openings don't change if you look again) or keep looking for a year.
 
 Every industry in every country has a real yearly change in its number of jobs: the US
 Bureau of Labor Statistics' employment by industry since 1940, and the ILO's estimates for
@@ -99,9 +120,11 @@ fading.
 
 Checked against history: US software developers hired in 1999 were laid off in 2001–03
 about twice as often (23%) as those hired in 1993 over 1995–97 (11%); Spanish civil
-engineers 59% in 2008–12 against 18% in 2002–06; US nurses 4% through 2008–10. At 40, a US
-graduate born in 1975 earns, in typical wages: medicine 4.9, computer science 4.5, law
-3.8, engineering 3.5, business 3.3, education 2.2, arts 1.9.
+engineers 60% in 2008–12 against 17% in 2002–06; US nurses 4% through 2008–10. A new
+computer science graduate looking in technology finds four openings in 1998 and two in
+2002; a Spanish engineering graduate finds four in engineering and industry in 2007 and
+none in 2009. At 40, a US graduate born in 1975 earns, in typical wages: medicine 5.1,
+computer science 4.5, law 3.9, engineering 3.2, business 3.2, education 1.9, arts 1.9.
 
 ## The trading desk
 

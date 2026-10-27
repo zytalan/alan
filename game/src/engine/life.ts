@@ -7,7 +7,7 @@ import { BIZ, TECH_STAGES } from "./content/business";
 import { makeName, nameGroupFor } from "./content/names";
 import { OCC } from "./content/occupations";
 import { finishDeskYear, markDeskYearStart } from "./desk";
-import { enqueue, EVENT_MAP, EVENTS, destinations, rentIncome, syncAllocation, type EventCtx } from "./events";
+import { backToSchool, enqueue, EVENT_MAP, EVENTS, destinations, lookForWork, rentIncome, syncAllocation, type EventCtx } from "./events";
 import { oneIn, pct, topPercent } from "./format";
 import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { industryGrowth, INDUSTRY_NAMES } from "./labour";
@@ -307,17 +307,17 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
         else log(s, "There's no money or place for secondary school. Your schooling ends here.", "bad");
       } else if (done === "secondary") enqueue(s, "after_school");
       else if (done === "bachelor") enqueue(s, "grad_next");
-      else enqueue(s, "first_job");
+      else lookForWork(s);
     }
   }
   if (s.flags.retakeYear === s.year) enqueue(s, "after_school");
 
   // ---- work
   const working = s.job || s.business || s.school || s.retired;
-  const pendingJob = s.pending.some((d) => ["first_job", "after_school", "grad_next", "start_business"].includes(d.event));
+  const pendingJob = s.pending.some((d) => ["first_job", "job_area", "after_school", "choose_field", "choose_trade", "grad_next", "start_business"].includes(d.event));
   if (!working && !pendingJob && s.age >= 15 && s.age < retirementAge(s) && (s.age >= 18 || s.edu !== "none" || !s.flags.firstJobAsked)) {
     if (s.age < 18) s.flags.firstJobAsked = true;
-    if (s.age >= 15) enqueue(s, "first_job", s.unemployedYears > 0 ? { title: "Job hunting", body: "You're looking for work." } : {});
+    if (s.age >= 15) lookForWork(s, s.unemployedYears > 0 ? { title: "Job hunting", body: "You're still looking for work." } : {});
   }
   if (s.age >= 18 && s.livingWithParents && (s.age >= 27 || s.partner || !(s.parents.alive[0] || s.parents.alive[1]))) s.livingWithParents = false;
 
@@ -638,7 +638,7 @@ export function resolveYear(s: LifeState): void {
     let tuitionOwn = 0;
     let tuitionBorrowed = 0;
     if (s.school && s.school.kind !== "primary" && s.school.kind !== "secondary") {
-      const tuition = tuitionPerYear(s, s.school.kind, Boolean(s.flags.abroad));
+      const tuition = tuitionPerYear(s, s.school.kind, Boolean(s.flags.abroad), s.school.trade);
       const parentsAlive = s.parents.alive[0] || s.parents.alive[1];
       const famShare = parentsAlive ? clamp(s.familyPct ** 1.2 * 1.3, 0, 1) : 0;
       support = famShare * (tuition + 0.3 * w);
@@ -1037,7 +1037,7 @@ export function careerAction(s: LifeState, action: CareerAction): void {
   const r = stream(s.seed, "action", action, s.year);
   switch (action) {
     case "jobhunt":
-      enqueue(s, "first_job", { title: "Job hunting", body: "Here's what's out there:" });
+      lookForWork(s, { title: "Job hunting" });
       break;
     case "raise": {
       if (r.chance(0.25 + s.stats.skill / 300)) {
@@ -1058,8 +1058,7 @@ export function careerAction(s: LifeState, action: CareerAction): void {
       log(s, "You quit your job.", "neutral");
       break;
     case "study":
-      if (s.edu === "bachelor" || s.edu === "master") enqueue(s, "grad_next");
-      else enqueue(s, "after_school");
+      backToSchool(s);
       break;
     case "business":
       enqueue(s, "start_business");

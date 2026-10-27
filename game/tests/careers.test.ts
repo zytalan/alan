@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { OCC, titleAt } from "../src/engine/content/occupations";
-import { enqueue, EVENT_MAP } from "../src/engine/events";
-import { industryGrowth } from "../src/engine/labour";
-import { ec, makeOffers, payMultiple, takeJob } from "../src/engine/ops";
+import { OCC, OCCUPATIONS, titleAt } from "../src/engine/content/occupations";
+import { enqueue, EVENT_MAP, lookForWork } from "../src/engine/events";
+import { signedPct } from "../src/engine/format";
+import { AREA_OF, AREAS, industryGrowth } from "../src/engine/labour";
+import { careerAction, choose } from "../src/engine/life";
+import { ec, makeOffers, occEligible, payMultiple, searchOffers, takeJob } from "../src/engine/ops";
 import { newGame, runLife, typical } from "../src/engine/policy";
 import { stream } from "../src/engine/rng";
-import type { Decision, Field, LifeState } from "../src/engine/types";
+import { graduate } from "../src/engine/school";
+import type { Decision, Field, LifeState, Trade } from "../src/engine/types";
 import { setWorld, type WorldData } from "../src/engine/world";
 
 beforeAll(() => {
@@ -26,7 +29,29 @@ function worker(iso: string, year: number, job: string, field: Field, seed = 1):
   return s;
 }
 
+/** Someone just qualified in `year`, with a degree or a trade (or neither), who has never worked. */
+function newcomer(iso: string, year: number, field?: Field, trade?: Trade, seed = 1): LifeState {
+  const s = worker(iso, year, "teacher", field ?? "general", seed);
+  Object.assign(s, { job: null, workYears: 0, formalYears: 0, indYears: {}, field, trade, edu: field ? "bachelor" : trade ? "vocational" : "secondary" });
+  delete s.flags.lastInd;
+  delete s.flags.pastJobs;
+  return s;
+}
+
 const ctx = (s: LifeState) => ({ e: ec(s), prev: ec(s, s.year - 1), w: ec(s).wage, r: stream(1, "ctx") });
+const ids = (d: Decision) => d.options.map((x) => x.id);
+const opt = (d: Decision, id: string) => d.options.find((x) => x.id === id)!;
+const pending = (s: LifeState, event: string) => {
+  const d = s.pending.find((x) => x.event === event);
+  expect(d, event).toBeDefined();
+  return d!;
+};
+
+/** Answer a decision and return the one it leads to. */
+function then(s: LifeState, d: Decision, option: string, event: string): Decision {
+  choose(s, d.id, option);
+  return pending(s, event);
+}
 
 describe("jobs by industry", () => {
   it("follow the real numbers: the dot-com bust, Spain's building collapse, the oil busts", () => {
@@ -133,14 +158,17 @@ describe("a career", () => {
     expect(d.options.map((o) => o.id)).toContain("move");
   });
 
-  it("offers graduates mostly the work their major trains them for", () => {
-    const homes: [Field, string[]][] = [["stem", ["engineer", "civileng", "oileng"]], ["business", ["accountant", "analyst", "finance"]], ["law", ["lawyer"]], ["education", ["teacher"]]];
-    for (const [field, jobs] of homes) {
-      const s = worker("USA", 1999, "teacher", field);
-      s.job = null;
+  it("offers graduates looking in their field mostly the work their major trains them for", () => {
+    const homes: [Field, string, string[]][] = [
+      ["stem", "industry", ["engineer", "civileng", "oileng"]],
+      ["business", "money", ["accountant", "analyst", "finance"]],
+      ["law", "money", ["lawyer"]],
+      ["education", "public", ["teacher"]],
+    ];
+    for (const [field, area, jobs] of homes) {
       let hit = 0;
-      for (let i = 0; i < 100; i++) if (makeOffers(s, stream(i, "first"), 3).some((of) => jobs.includes(of.occ))) hit++;
-      expect(hit, field).toBeGreaterThan(70);
+      for (let seed = 1; seed <= 8; seed++) if (searchOffers(newcomer("USA", 1999, field, undefined, seed), area as never).some((of) => jobs.includes(of.occ))) hit++;
+      expect(hit, field).toBeGreaterThanOrEqual(7);
     }
   });
 
@@ -165,5 +193,147 @@ describe("a career", () => {
     }
     expect(n).toBeGreaterThan(20);
     expect(inField / n).toBeGreaterThan(0.7);
+  });
+});
+
+describe("looking for work", () => {
+  it("asks where to look first, with what you studied at the top", () => {
+    const s = newcomer("USA", 1999, "cs");
+    lookForWork(s);
+    const d = pending(s, "job_area");
+    expect(d.title).toBe("Your first job");
+    expect(d.options[0].id).toBe("tech");
+    expect(d.options[0].hint).toMatch(/^What you studied · .*junior developer.* · starts at about \$[\d.]+K.* · jobs \+\d+% last year$/);
+    expect(ids(d).at(-1)).toBe("any");
+    expect(ids(d)).toHaveLength(AREAS.length + 1);
+  });
+
+  it("says why an area is closed to you", () => {
+    const s = newcomer("PAK", 2005);
+    s.edu = "primary";
+    lookForWork(s);
+    const d = pending(s, "job_area");
+    expect(opt(d, "tech").disabled).toBe("Needs IT training or a degree in computer science");
+    expect(opt(d, "money").disabled).toBe("Needs secondary school");
+    expect(opt(d, "farming").disabled).toBeFalsy();
+  });
+
+  it("only offers work in the area you chose, and the same openings if you look again that year", () => {
+    const s = newcomer("USA", 1999, "cs");
+    for (const area of ["tech", "money", "public", "services"] as const) {
+      const offers = searchOffers(s, area);
+      expect(offers.length, area).toBeGreaterThan(0);
+      for (const of of offers) expect(AREA_OF[OCC[of.occ].industry]).toBe(area);
+      expect(searchOffers(s, area)).toEqual(offers);
+    }
+  });
+
+  it("has fewer openings in a bust, and none when an industry collapses", () => {
+    expect(searchOffers(newcomer("USA", 2002, "cs"), "tech").length).toBeLessThan(searchOffers(newcomer("USA", 1998, "cs"), "tech").length);
+    expect(searchOffers(newcomer("ESP", 2007, "stem"), "industry").length).toBeGreaterThan(2);
+    expect(searchOffers(newcomer("ESP", 2009, "stem"), "industry")).toEqual([]);
+  });
+
+  it("lets you look somewhere else, shutting an area with nothing in it", () => {
+    const s = newcomer("ESP", 2009, "stem");
+    lookForWork(s);
+    const offers = then(s, pending(s, "job_area"), "industry", "first_job");
+    expect(offers.body).toBe("Nobody in engineering and industry is hiring right now.");
+    expect(ids(offers)).toEqual(["back", "wait"]);
+    const again = then(s, offers, "back", "job_area");
+    expect(opt(again, "industry").disabled).toBe("Nobody in engineering and industry is hiring right now");
+    const elsewhere = then(s, again, "money", "first_job");
+    expect(elsewhere.options.length).toBeGreaterThan(2);
+  });
+
+  it("takes job hunting from the Work tab through the same steps, starting with where you work", () => {
+    const s = worker("USA", 2005, "software", "cs");
+    s.indYears = { tech: 6 };
+    s.workYears = 6;
+    careerAction(s, "jobhunt");
+    const d = pending(s, "job_area");
+    expect(d.body).toBe("You've worked in technology for 6 years. Where do you look?");
+    expect(d.options[0].hint).toMatch(/^Where you work now/);
+  });
+
+  it("starts someone changing field lower than someone staying in it", () => {
+    const s = worker("USA", 2005, "software", "cs");
+    s.workYears = 10;
+    s.indYears = { tech: 10 };
+    const top = (area: "tech" | "money") => Math.max(...searchOffers(s, area).map((of) => of.level ?? 0));
+    expect(top("tech")).toBe(2);
+    expect(top("money")).toBeLessThan(2);
+  });
+
+  it("sends someone laid off in a bust looking outside their field", () => {
+    const s = worker("USA", 2002, "software", "cs");
+    s.indYears = { tech: 3 };
+    enqueue(s, "layoff");
+    const d = then(s, pending(s, "layoff"), "outside", "job_area");
+    expect(d.title).toBe("Outside your field");
+    expect(opt(d, "tech").disabled).toBe("Nobody in technology is hiring right now");
+  });
+
+  it("shows a change that rounds to nothing as +0%", () => {
+    expect(signedPct(-0.004)).toBe("+0%");
+    expect(signedPct(-0.04)).toBe("−4%");
+  });
+});
+
+describe("vocational training", () => {
+  it("starts with picking a trade, from the trades that exist then", () => {
+    const early = newcomer("USA", 1980);
+    enqueue(early, "choose_trade");
+    expect(ids(pending(early, "choose_trade"))).not.toContain("it");
+    const later = newcomer("USA", 1995);
+    enqueue(later, "choose_trade");
+    const d = pending(later, "choose_trade");
+    expect(ids(d)).toEqual(["nursing", "electrical", "it", "hospitality", "mechanics", "beauty", "care", "design", "flying"]);
+    expect(opt(d, "nursing").hint).toMatch(/^2 years · .*new nurses earn about/);
+  });
+
+  it("qualifies you for your trade's work and not another's", () => {
+    const s = newcomer("USA", 2005);
+    s.stats.skill = 60;
+    enqueue(s, "choose_trade");
+    choose(s, pending(s, "choose_trade").id, "nursing");
+    expect(s.school?.trade).toBe("nursing");
+    graduate(s);
+    expect(s.trade).toBe("nursing");
+    expect(occEligible(s, OCC.nurse)).toBe(true);
+    expect(occEligible(s, OCC.paramedic)).toBe(true);
+    expect(occEligible(s, OCC.trades)).toBe(false);
+    lookForWork(s);
+    expect(pending(s, "job_area").options[0].id).toBe("health");
+    expect(searchOffers(s, "health").some((of) => of.occ === "nurse")).toBe(true);
+  });
+
+  it("prices flight school in dollars: within reach on an American loan, not for a poor family in Nigeria", () => {
+    const us = newcomer("USA", 2010);
+    us.stats.skill = 70;
+    enqueue(us, "choose_trade");
+    expect(opt(pending(us, "choose_trade"), "flying").disabled).toBeFalsy();
+    const ng = newcomer("NGA", 2010);
+    Object.assign(ng, { familyPct: 0.3 });
+    ng.stats.skill = 70;
+    ng.access.bank = false;
+    enqueue(ng, "choose_trade");
+    expect(opt(pending(ng, "choose_trade"), "flying").disabled).toMatch(/more than you can raise/);
+  });
+});
+
+describe("the new jobs", () => {
+  it("only exist once they did", () => {
+    const s = newcomer("USA", 2003, "cs");
+    s.stats.skill = 70;
+    const at = (year: number, job: string) => occEligible({ ...s, year }, OCC[job]);
+    expect([at(2003, "security"), at(2006, "security")]).toEqual([false, true]);
+    expect([at(2008, "socialmedia"), at(2011, "socialmedia")]).toEqual([false, true]);
+    expect([at(2009, "delivery"), at(2013, "delivery")]).toEqual([false, true]);
+  });
+
+  it("give every area at least three kinds of work", () => {
+    for (const a of AREAS) expect(OCCUPATIONS.filter((o) => AREA_OF[o.industry] === a.id).length, a.id).toBeGreaterThanOrEqual(3);
+    for (const o of OCCUPATIONS) if (o.formal && o.pool !== "senior") expect(o.ladder, o.id).toHaveLength(5);
   });
 });

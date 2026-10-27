@@ -49,6 +49,8 @@ export function pct(x: number, digits = 0): string {
 
 export function signedPct(x: number, digits = 0): string {
   const s = (x * 100).toFixed(digits);
+  // a change that rounds to nothing reads as +0%, not −0%
+  if (Number(s) === 0) return `+${s.replace("-", "")}%`;
   return x > 0 ? `+${s}%` : `${s.replace("-", "−")}%`;
 }
 

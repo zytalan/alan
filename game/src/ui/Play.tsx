@@ -4,7 +4,7 @@ import {
   consumerRate, country, countryIn, countryName, creditLimit, deskAccess, deskValue, ec, econ, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
   fmtIn, hasMarkets, homePrice, industryGrowth, INDUSTRY_NAMES, jobIndustry, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
   retirementAge, salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, signedPct, stageName, steady, toToday,
-  tradeAsset, usd, W,
+  TRADE_NAMES, tradeAsset, usd, W,
   wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
 } from "../engine";
 import { Sparkline } from "./charts";
@@ -587,7 +587,9 @@ function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
           {s.job
             ? `${s.job.title}, year ${s.job.years + 1}`
             : s.school
-              ? `Studying (${EDU_LABEL[s.school.kind].toLowerCase()}, ${s.school.yearsLeft} yr left)`
+              ? s.school.trade
+                ? `Training: ${TRADE_NAMES[s.school.trade]} (${s.school.yearsLeft} yr left)`
+                : `Studying (${EDU_LABEL[s.school.kind].toLowerCase()}, ${s.school.yearsLeft} yr left)`
               : s.retired
                 ? "Retired"
                 : s.business
@@ -612,7 +614,11 @@ function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
         <span>Education</span>
         <span>
           {EDU_LABEL[s.edu]}
-          {s.field && s.edu !== "secondary" && s.edu !== "primary" ? `, ${FIELD_NAMES[s.field]}` : ""}
+          {s.edu === "vocational" && s.trade
+            ? `, ${TRADE_NAMES[s.trade]}`
+            : s.field && s.edu !== "secondary" && s.edu !== "primary" && s.edu !== "vocational"
+              ? `, ${FIELD_NAMES[s.field]}`
+              : ""}
         </span>
         <span>Typical wage here</span>
         <span className="num">{fmt(s, W(s))}</span>
