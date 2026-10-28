@@ -180,10 +180,13 @@ export function refreshAccess(s: LifeState, r: Rng): void {
   const d = dev(s);
   if (!a.bank && s.age >= 16) {
     const acct = (nearest(s.country, "acct", y) ?? 30) / 100;
-    const boost = (0.6 + 0.8 * s.familyPct) * (eduAtLeast(s.edu, "secondary") ? 1.15 : 0.85) * (s.job?.formal ? 1.2 : 1);
-    // account ownership is a share of adults: you have one once your country's reach passes your threshold
+    const schooled = eduAtLeast(s.edu, "secondary") || s.school?.kind === "secondary";
+    const boost = (0.6 + 0.8 * s.familyPct) * (schooled ? 1.15 : 0.85) * (s.job?.formal ? 1.2 : 1);
+    // account ownership is a share of adults: you have one once your country's reach passes your threshold.
+    // A better-off, better-schooled family gets there sooner, but where nearly everyone has an account
+    // only the few left out are affected: 1% of Australians, most of the poor where few have one
     const u = Number(s.flags.bankU ?? (s.flags.bankU = r.next()));
-    if (u < clamp(acct * boost, 0.01, 0.995)) {
+    if (u < clamp(acct ** (1 / boost), 0.01, 0.995)) {
       a.bank = true;
       if (s.cashHome > 0) {
         s.holdings.cash += s.cashHome;

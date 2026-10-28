@@ -48,6 +48,21 @@ describe("monthly markets", () => {
 });
 
 describe("trading desk", () => {
+  it("opens to nearly every young Australian, with the S&P 500 from 1975", () => {
+    let unbanked = 0;
+    for (let seed = 1; seed <= 200; seed++) if (!newGame({ mode: "timetravel", seed, country: "AUS", year: 2005, startAge: 18, background: "poor" }).access.bank) unbanked++;
+    expect(unbanked).toBeLessThan(10); // about 1% of Australians had no account; a poor family's child is likelier to be one of them
+    const banked = (year: number) => {
+      for (let seed = 1; ; seed++) {
+        const s = newGame({ mode: "timetravel", seed, country: "AUS", year, startAge: 18, background: "middle" });
+        if (s.access.bank) return s;
+      }
+    };
+    expect(tradable(banked(1974)).map((i) => i.id)).not.toContain("spx");
+    expect(tradable(banked(1975)).map((i) => i.id)).toContain("spx");
+    expect(deskAccess(banked(2005)).ok).toBe(true);
+  });
+
   it("moves money in and out without creating or losing any", () => {
     const s = trader();
     expect(deskAccess(s).ok).toBe(true);
