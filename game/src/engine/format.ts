@@ -74,3 +74,14 @@ export function topPercent(pctile: number): string {
   }
   return `bottom ${Math.max(1, Math.round(pctile * 100))}%`;
 }
+
+/** A job title or name inside a sentence: lower case, except acronyms like IT and HR. */
+export function lc(title: string): string {
+  return /^[A-Z]{2}/.test(title) ? title : title[0].toLowerCase() + title.slice(1);
+}
+
+/** "an accountant", "a nurse", "an IT technician" */
+export function aTitle(title: string): string {
+  const t = lc(title);
+  return `${/^[aeiou]|^[AEFHILMNORSX][A-Z]/.test(t) ? "an" : "a"} ${t}`;
+}

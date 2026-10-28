@@ -6,7 +6,7 @@
 import { BIZ, BUSINESSES } from "./content/business";
 import { FIELD_NAMES, MAJORS, majorOpen, OCC, titleAt, TRADE_COURSE, TRADE_NAMES, TRADES, tradeOpen } from "./content/occupations";
 import { givenName, nameGroupFor } from "./content/names";
-import { pct, signedPct } from "./format";
+import { aTitle, lc, pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
 import { AREA_OF, AREAS, industryGrowth, INDUSTRY_NAMES, recentGrowth, type Area, type Industry } from "./labour";
 import { econ, type YearEcon } from "./macro";
@@ -142,16 +142,6 @@ function upperFirst(text: string): string {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
-/** A job title inside a sentence: lower case, except acronyms like IT and HR. */
-function lc(title: string): string {
-  return /^[A-Z]{2}/.test(title) ? title : title[0].toLowerCase() + title.slice(1);
-}
-
-/** "an accountant", "a nurse", "an IT technician" */
-function aTitle(title: string): string {
-  const t = lc(title);
-  return `${/^[aeiou]|^[AEFHILMNORSX][A-Z]/.test(t) ? "an" : "a"} ${t}`;
-}
 
 function offerLine(of: Offer): string {
   return `${of.title} at ${of.employer}`;
@@ -496,7 +486,7 @@ const DEFS: EventDef[] = [
         if (c.r.chance(clamp(s.familyPct + 0.2, 0.1, 0.95))) bump(s, "happiness", 4);
         else {
           bump(s, "happiness", -2);
-          log(s, "Your parents say no.", "neutral");
+          log(s, "You beg your parents for one. They say no.", "neutral");
         }
       } else if (opt === "used") {
         s.flags.hustler = true;
@@ -815,7 +805,7 @@ const DEFS: EventDef[] = [
       }
       const of = offers[Number(opt.slice(1))];
       takeJob(s, of);
-      log(s, `You start work as ${aTitle(of.title)} at ${of.employer}.`, "milestone");
+      log(s, `You start work as ${aTitle(of.title)} at ${of.employer}, on ${fmt(s, of.mult * W(s))} a year.`, "milestone");
     },
   },
   {
@@ -872,41 +862,41 @@ const DEFS: EventDef[] = [
       const of = p.of as Offer;
       if (opt === "take") {
         takeJob(s, of);
-        log(s, `You switch jobs: ${lc(of.title)} at ${of.employer}.`, "good");
+        log(s, `You switch jobs: ${lc(of.title)} at ${of.employer}, on ${fmt(s, of.mult * W(s))} a year.`, "good");
       } else if (opt === "haggle") {
         const roll = c.r.next();
         if (roll < 0.55) {
           takeJob(s, { ...of, mult: of.mult * 1.1 });
-          log(s, "You negotiate 10% more and take the job.", "good");
+          log(s, `You negotiate 10% more and take the job: ${lc(of.title)} at ${of.employer}, on ${fmt(s, of.mult * 1.1 * W(s))} a year.`, "good");
         } else if (roll < 0.8) {
           takeJob(s, of);
-          log(s, "They won't budge, but you take it anyway.", "neutral");
-        } else log(s, "They withdraw the offer.", "bad");
+          log(s, `${upperFirst(of.employer)} won't budge on pay, but you take the job anyway: ${lc(of.title)}, on ${fmt(s, of.mult * W(s))} a year.`, "neutral");
+        } else log(s, `You haggle, and ${of.employer} withdraws its offer.`, "bad");
       } else if (opt === "bonus") {
         const roll = c.r.next();
         if (roll < 0.6) {
           takeJob(s, of);
           const bonus = 0.2 * of.mult * W(s);
           invest(s, bonus);
-          log(s, `You take the job, with a ${fmt(s, bonus)} signing bonus.`, "good");
+          log(s, `You take the job at ${of.employer}, with a ${fmt(s, bonus)} signing bonus: ${lc(of.title)}, on ${fmt(s, of.mult * W(s))} a year.`, "good");
         } else if (roll < 0.85) {
           takeJob(s, of);
-          log(s, "No bonus, but you take the job anyway.", "neutral");
-        } else log(s, "They find someone cheaper.", "bad");
+          log(s, `No signing bonus, but you take the job anyway: ${lc(of.title)} at ${of.employer}.`, "neutral");
+        } else log(s, `You ask for a signing bonus, and ${of.employer} finds someone cheaper.`, "bad");
       } else if (opt === "remote") {
         takeJob(s, { ...of, mult: of.mult * 0.95 });
         bump(s, "happiness", 3);
         bump(s, "health", 1);
-        log(s, `You switch jobs, and work from home: ${lc(of.title)} at ${of.employer}.`, "good");
+        log(s, `You switch jobs, and work from home: ${lc(of.title)} at ${of.employer}, on ${fmt(s, of.mult * 0.95 * W(s))} a year.`, "good");
       } else if (opt === "counter" && s.job) {
         const roll = c.r.next();
         if (roll < 0.45) {
           s.job.mult = Math.max(s.job.mult, Math.min(of.mult, s.job.mult * 1.1));
-          log(s, "Your boss matches most of it to keep you.", "good");
-        } else if (roll < 0.85) log(s, "Your boss wishes you well. By then the other job has gone.", "neutral");
+          log(s, `Offered a job at ${of.employer}, you ask your boss to match it. They match most of it to keep you.`, "good");
+        } else if (roll < 0.85) log(s, `Offered a job at ${of.employer}, you ask your boss to match it. They wish you well, and by then the other job has gone.`, "neutral");
         else {
           bump(s, "network", -3);
-          log(s, "Your boss doesn't take it well.", "bad");
+          log(s, `Offered a job at ${of.employer}, you ask your boss to match it. They don't take it well.`, "bad");
         }
       }
     },
@@ -1005,12 +995,12 @@ const DEFS: EventDef[] = [
         const of = offers.sort((a, b) => Math.abs(a.mult - lastMult * 0.85) - Math.abs(b.mult - lastMult * 0.85))[0];
         if (of) {
           takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 0.9) });
-          log(s, `You take a job as ${aTitle(of.title)}.`, "neutral");
+          log(s, `You take the first job you can find: ${lc(of.title)} at ${of.employer}, on ${fmt(s, Math.min(of.mult, lastMult * 0.9) * W(s))} a year.`, "neutral");
         }
       } else if (opt === "safe" && p.safe) {
         const of = p.safe as Offer;
         takeJob(s, of);
-        log(s, `You take a steadier job as ${aTitle(of.title)}.`, "neutral");
+        log(s, `You take a steadier job as ${aTitle(of.title)}, on ${fmt(s, of.mult * W(s))} a year.`, "neutral");
       } else if (opt === "move") {
         const of = makeOffers(s, c.r, 3)[0];
         pay(s, 0.1 * W(s));
@@ -1018,7 +1008,7 @@ const DEFS: EventDef[] = [
         bump(s, "happiness", -3);
         if (of) {
           takeJob(s, { ...of, mult: Math.min(of.mult, lastMult * 1.05) });
-          log(s, `You move across the country for a job as ${aTitle(of.title)}.`, "milestone");
+          log(s, `You move across the country for a job as ${aTitle(of.title)}, on ${fmt(s, Math.min(of.mult, lastMult * 1.05) * W(s))} a year.`, "milestone");
         }
       } else if (opt === "early") {
         const early = s.age < retirementAge(s);
@@ -1118,13 +1108,13 @@ const DEFS: EventDef[] = [
       if (opt === "train") {
         job.mult *= 1.02;
         bump(s, "skill", 6);
-        log(s, "You take the training instead of the raise.", "good");
+        log(s, "Offered a senior role, you take training instead of the raise.", "good");
         return;
       }
       if (opt === "back") {
         bump(s, "network", 6);
         if (c.r.chance(0.35)) job.mult *= 1.05;
-        log(s, "Your colleague gets the job, and remembers who backed them.", "good");
+        log(s, "Your boss's job goes to the colleague you backed, who remembers it.", "good");
         return;
       }
       if (opt === "mentor") {
@@ -1136,7 +1126,7 @@ const DEFS: EventDef[] = [
       }
       if (opt === "apply" && !c.r.chance(0.55)) {
         bump(s, "happiness", -3);
-        log(s, "The job goes to your colleague.", "bad");
+        log(s, "You go for your boss's job, but it goes to your colleague.", "bad");
         return;
       }
       if (opt === "flex") {
@@ -1155,11 +1145,12 @@ const DEFS: EventDef[] = [
       if (opt === "more") {
         if (c.r.chance(0.25)) {
           bump(s, "happiness", -3);
-          log(s, "You push too hard. The job goes to someone else.", "bad");
+          log(s, "You push too hard for more pay, and the promotion goes to someone else.", "bad");
           return;
         }
         if (c.r.chance(0.6)) mult *= 1.06;
       }
+      const was = { mult: job.mult, title: job.title };
       job.mult = mult;
       job.level = opt === "run" || opt === "share" ? 4 : job.level + 1; // the top of the ladder is as high as this job goes
       if (p.occ === job.occ && OCC[job.occ].ladder) job.title = titleAt(OCC[job.occ], job.level);
@@ -1170,13 +1161,14 @@ const DEFS: EventDef[] = [
       }
       bump(s, "happiness", 3);
       const done: Record<string, string> = {
-        equity: "You take the corner office, and shares instead of part of the salary.",
-        flex: "You take the senior role, on your terms.",
-        apply: "You get your boss's job.",
-        run: "You take charge of the department.",
-        share: "You and a colleague run the department together.",
+        equity: "You take the corner office, and shares instead of part of the salary",
+        flex: `You take the senior role on your terms: ${lc(job.title)}`,
+        apply: `You get your boss's job: ${lc(job.title)}`,
+        run: `You take charge of the department as ${lc(job.title)}`,
+        share: "You and a colleague run the department together",
       };
-      log(s, done[opt] ?? `Promoted — you're now ${aTitle(job.title)}.`, "good");
+      const head = done[opt] ?? (job.title !== was.title ? `Promoted to ${lc(job.title)}` : `A step up as ${lc(job.title)}`);
+      log(s, `${head}: ${fmt(s, job.mult * W(s))} a year (${signedPct(job.mult / was.mult - 1)}).`, "good");
     },
   },
   {
@@ -1228,7 +1220,7 @@ const DEFS: EventDef[] = [
         bump(s, "happiness", 5);
       } else if (opt === "part" && s.job) {
         commit(s, { key: "parttime", label: "Working part-time", wage: -0.33 * s.job.mult, until: s.year + 2, needsJob: true, health: 3, happiness: 2 });
-        log(s, "You cut your hours.", "neutral");
+        log(s, "Burnt out, you go part-time for two years.", "neutral");
       } else bump(s, "health", -7);
     },
   },
@@ -1263,7 +1255,7 @@ const DEFS: EventDef[] = [
         s.job.mult *= 0.5;
         s.flags.partTime = true;
         bump(s, "happiness", 3);
-        log(s, "You go part-time.", "milestone");
+        log(s, "You go part-time instead of retiring.", "milestone");
         return;
       }
       if (opt !== "retire") return;
@@ -1310,7 +1302,15 @@ const DEFS: EventDef[] = [
       };
       setAllocation(s, map[opt]);
       rebalance(s);
-      log(s, "You decide where your savings will live.", "money");
+      const where: Record<string, string> = {
+        bank: s.access.bank ? "in the bank" : "at home",
+        index: "into a local stock index fund",
+        global: "into a global index fund",
+        gold: "into gold",
+        usd: "into US dollars",
+        mix: "into a bit of everything",
+      };
+      log(s, `You put your first savings, ${fmt(s, liquid(s))}, ${where[opt]}.`, "money");
     },
   },
   {
@@ -1369,16 +1369,16 @@ const DEFS: EventDef[] = [
         s.stocks = s.stocks.filter((x) => x.alive);
         if (opt === "sell") {
           s.counters.soldInCrash++;
-          log(s, "You sell near the bottom. At least you can sleep.", "money");
-        } else log(s, "You sell half and keep the rest riding.", "money");
+          log(s, `${p.crypto ? "Crypto crashes" : "Stocks crash"}, and you sell near the bottom. At least you can sleep.`, "money");
+        } else log(s, `${p.crypto ? "Crypto crashes" : "Stocks crash"}. You sell half and keep the rest riding.`, "money");
       } else if (opt === "hold") {
         s.counters.heldThroughCrash++;
-        log(s, "You hold on and try not to look.", "money");
+        log(s, `${p.crypto ? "Crypto crashes" : "Stocks crash"}. You hold on and try not to look.`, "money");
       } else {
         const target = p.crypto ? "crypto" : s.access.localEq ? "localEq" : "globalEq";
         move(s, ["cash", "bonds"], target, 0.5);
         s.counters.heldThroughCrash++;
-        log(s, "You buy while everyone else is selling.", "money");
+        log(s, `${p.crypto ? "Crypto crashes" : "Stocks crash"}, and you buy while everyone else is selling.`, "money");
       }
     },
   },
@@ -1425,16 +1425,16 @@ const DEFS: EventDef[] = [
       s.flags.boomLast = opt;
       if (opt === "out") {
         move(s, asset === "crypto" ? ["crypto"] : ["localEq", "globalEq"], "cash", 1);
-        log(s, "You sell everything and sit in cash, waiting for the crash.", "money");
+        log(s, `${p.asset === "crypto" ? "Crypto is soaring" : "Shares are soaring"}. You sell everything and sit in cash, waiting for the crash.`, "money");
       } else if (opt === "allin") {
         const others = ASSET_KEYS.filter((k) => k !== asset);
         move(s, others, asset, 0.8);
-        log(s, "You go all in. It feels amazing.", "money");
+        log(s, `${p.asset === "crypto" ? "Crypto is soaring" : "Shares are soaring"}, and you go all in. It feels amazing.`, "money");
       } else if (opt === "trim" && s.holdings[asset] > 0) {
         s.holdings.cash += s.holdings[asset] * 0.4;
         s.holdings[asset] *= 0.6;
         syncAllocation(s);
-        log(s, "You take some chips off the table.", "money");
+        log(s, `${p.asset === "crypto" ? "Crypto is soaring" : "Shares are soaring"}. You take some chips off the table.`, "money");
       }
     },
   },
@@ -1514,7 +1514,7 @@ const DEFS: EventDef[] = [
       } else if (c.r.chance(0.02 * tickets ** 0.5)) {
         invest(s, cost * 5);
         log(s, `A small prize: ${fmt(s, cost * 5)}.`, "good");
-      } else log(s, "Not even close.", "neutral");
+      } else log(s, "Your lottery ticket: not even close.", "neutral");
     },
   },
   {
@@ -1556,13 +1556,13 @@ const DEFS: EventDef[] = [
     resolve: (s, _c, _p, opt) => {
       if (opt === "dollars") {
         move(s, ["cash"], "usd", 1);
-        log(s, "You swap your savings for dollars.", "money");
+        log(s, "Fearing for the banks, you swap your savings for dollars.", "money");
       }
       if (opt === "withdraw") {
         s.cashHome += s.holdings.cash;
         s.holdings.cash = 0;
         s.flags.withdrew = s.year;
-        log(s, "You withdraw your savings and hide them at home.", "money");
+        log(s, "Fearing for the banks, you withdraw your savings and hide them at home.", "money");
       }
     },
   },
@@ -1711,7 +1711,7 @@ const DEFS: EventDef[] = [
       s.flags.debtYear = s.year;
       if (opt === "family" && p.again && c.r.chance(0.5)) {
         bump(s, "network", -4);
-        log(s, "Your family says no this time.", "bad");
+        log(s, "Drowning in debt, you ask your family for help again. They say no this time.", "bad");
         return;
       }
       if (opt === "home") {
@@ -2009,10 +2009,10 @@ const DEFS: EventDef[] = [
     resolve: (s, _c, _p, opt) => {
       if (opt === "buy") {
         s.flags.insured = true;
-        log(s, "You buy health insurance.", "money");
+        log(s, `You buy a full health plan: ${fmt(s, 0.03 * W(s))} a year.`, "money");
       } else if (opt === "basic") {
         s.flags.insuredBasic = true;
-        log(s, "You buy a basic health plan.", "money");
+        log(s, `You buy a basic health plan: ${fmt(s, 0.012 * W(s))} a year.`, "money");
       }
     },
   },
@@ -2415,7 +2415,7 @@ const DEFS: EventDef[] = [
       if (opt === "new") {
         pay(s, 0.2 * W(s));
         commit(s, { key: "car", label: "Car payments", wage: -0.18, until: s.year + 5, happiness: 1 });
-        log(s, "You drive a new car off the lot.", "money");
+        log(s, `You drive a new car off the lot: ${fmt(s, 0.2 * W(s))} down, then ${fmt(s, 0.18 * W(s))} a year for five years.`, "money");
       } else if (opt === "used") {
         pay(s, 0.35 * W(s));
         commit(s, { key: "car", label: "Car repairs", wage: -0.04, until: s.year + 6 });
@@ -2446,7 +2446,7 @@ const DEFS: EventDef[] = [
         s.consumerDebt += 0.25 * W(s);
         bump(s, "happiness", 4);
         followUp(s, "card_debt", 2);
-        log(s, "The card fills up fast.", "money");
+        log(s, "You take a credit card and treat yourself. It fills up fast.", "money");
       } else s.flags.prudent = true;
     },
   },
@@ -2597,20 +2597,20 @@ const DEFS: EventDef[] = [
         if (c.r.chance(0.2 + s.stats.skill / 300)) {
           s.job.mult *= 1.13;
           bump(s, "happiness", 4);
-          log(s, "You get the raise you asked for.", "good");
+          log(s, "You ask for 15% more, and get it.", "good");
         } else {
           bump(s, "happiness", -3);
-          log(s, "Your boss says no, and remembers that you asked.", "bad");
+          log(s, "You ask for 15% more. Your boss says no, and remembers that you asked.", "bad");
         }
       } else if (opt === "small") {
         if (c.r.chance(0.6)) {
           s.job.mult *= 1.045;
-          log(s, "You get a small raise.", "good");
-        } else log(s, "Not this year, says your boss.", "neutral");
+          log(s, "You ask for 5% more, and get it.", "good");
+        } else log(s, "You ask for a raise. Not this year, says your boss.", "neutral");
       } else if (opt === "offer") {
         if (c.r.chance(0.5)) {
           s.job.mult *= 1.1;
-          log(s, "Your employer matches the outside offer.", "good");
+          log(s, "You get an offer elsewhere, and your employer matches it.", "good");
         } else enqueue(s, "job_offer");
       }
     },
@@ -2662,11 +2662,11 @@ const DEFS: EventDef[] = [
       bump(s, "network", opt === "lead" ? 8 : 4);
       if (c.r.chance(0.55)) {
         s.job.mult *= opt === "lead" ? 1.08 : 1.06;
-        log(s, "The strike wins a pay rise.", "good");
-      } else log(s, "The strike ends with nothing gained.", "bad");
+        log(s, "Your union strikes, and wins a pay rise.", "good");
+      } else log(s, "Your union strikes, and gains nothing.", "bad");
       if (opt === "lead" && c.r.chance(0.2)) {
         bump(s, "happiness", -4);
-        log(s, "Management doesn't forget your name.", "bad");
+        log(s, "You helped organise the strike, and management doesn't forget your name.", "bad");
       }
     },
   },
@@ -2689,19 +2689,19 @@ const DEFS: EventDef[] = [
       if (opt === "confront") {
         if (c.r.chance(0.5)) {
           bump(s, "happiness", 3);
-          log(s, "Your manager backs down and gives you the credit.", "good");
+          log(s, "Your manager took credit for your project. You confront them, and they back down.", "good");
         } else {
           bump(s, "happiness", -4);
-          log(s, "Things get frosty at work.", "bad");
+          log(s, "Your manager took credit for your project. You confront them, and things get frosty.", "bad");
         }
       } else if (opt === "above") {
         if (s.job && c.r.chance(0.45)) {
           s.job.mult *= 1.05;
           bump(s, "network", 4);
-          log(s, "Their boss notices you. Your pay goes up.", "good");
+          log(s, "Your manager took credit for your project. You tell their boss, who notices you: your pay goes up.", "good");
         } else {
           bump(s, "network", -4);
-          log(s, "It backfires. Nobody likes going over heads.", "bad");
+          log(s, "Your manager took credit for your project. You go over their head, and it backfires.", "bad");
         }
       } else if (opt === "leave") enqueue(s, "job_offer");
       else bump(s, "happiness", -3);
@@ -2727,7 +2727,7 @@ const DEFS: EventDef[] = [
           s.partner.working = false;
           log(s, `${s.partner.name} has to give up their job for the move.`, "neutral");
         }
-        log(s, "You move for work.", "milestone");
+        log(s, "You take a transfer, with 15% more pay, and move for work.", "milestone");
       } else {
         s.job.mult *= 1.12;
         commit(s, { key: "commute", label: "Weekly commuting", wage: -0.04, until: s.year + 3, needsJob: true, happiness: -2 });
@@ -2895,10 +2895,10 @@ const DEFS: EventDef[] = [
         s.job.mult *= 1.25;
         s.job.years = 0; // the last in, the first out if it turns
         s.counters.jobChanges++;
-        log(s, "You jump to the best offer.", "good");
+        log(s, `Three companies want you. You jump to the best offer: ${fmt(s, s.job.mult * W(s))} a year.`, "good");
       } else if (opt === "raise") {
         s.job.mult *= 1.12;
-        log(s, "Your employer matches most of it to keep you.", "good");
+        log(s, "Three companies want you. Your employer matches most of it to keep you.", "good");
       } else if (opt === "startup") {
         s.job.mult *= 0.85;
         s.job.years = 0;
@@ -2910,7 +2910,7 @@ const DEFS: EventDef[] = [
       } else {
         bump(s, "network", 4);
         s.flags.steadyUntil = s.year + 3;
-        log(s, "You stay. Your boss notices.", "good");
+        log(s, "Three companies want you. You stay loyal, and your boss notices.", "good");
       }
     },
   },
@@ -3482,7 +3482,7 @@ const DEFS: EventDef[] = [
         s.counters.scams++;
         bump(s, "happiness", -10);
         log(s, `They never come. ${fmt(s, lost)} is gone.`, "bad");
-      } else if (opt === "video") log(s, "The camera never works. You stop writing.", "neutral");
+      } else if (opt === "video") log(s, "Your online love's camera never works. You stop writing.", "neutral");
     },
   },
   // ------------------------------------------------------------- moments in history
@@ -3625,7 +3625,7 @@ const DEFS: EventDef[] = [
         log(s, `You pay off your friend's loan: ${fmt(s, owed)}.`, "money");
       } else if (opt === "spread") {
         commit(s, { key: "cosigned", label: "Your friend's loan", wage: -(owed * 1.12) / 3 / W(s), until: s.year + 2 });
-        log(s, "You take over your friend's loan payments.", "money");
+        log(s, "Your friend stops paying the loan you co-signed. You take over the payments.", "money");
       } else if (opt === "rescue") {
         pay(s, owed / 3);
         if (c.r.chance(0.55)) {
@@ -3633,14 +3633,14 @@ const DEFS: EventDef[] = [
           log(s, "With your help, your friend gets back on their feet and pays the rest.", "good");
         } else {
           addDue(s, { key: "cosign", year: s.year + 1, wage: -((owed * 2) / 3) / W(s), label: "Your friend's loan", text: "Your friend falls behind again. The bank collects" });
-          log(s, "You pay a third and hope for the best.", "neutral");
+          log(s, "Your friend stops paying the loan you co-signed. You pay a third and hope for the best.", "neutral");
         }
       } else {
         s.consumerDebt += owed * 1.15;
         s.creditLockUntil = Math.max(s.creditLockUntil, s.year + 5);
         delete s.flags.goodCredit;
         bump(s, "network", -6);
-        log(s, "You refuse. The debt goes to collectors, and your credit goes with it.", "bad");
+        log(s, "Your friend stops paying the loan you co-signed. You refuse, and the debt goes to collectors, your credit with it.", "bad");
       }
     },
   },
@@ -3668,15 +3668,15 @@ const DEFS: EventDef[] = [
       const amt = Number(p.amt);
       if (opt === "forgive") {
         bump(s, "network", 4);
-        log(s, "You let the debt go.", "neutral");
+        log(s, `${p.sib ? "Your sibling" : "Your friend"} can't pay you back. You let the debt go.`, "neutral");
       } else if (opt === "wait") {
         if (c.r.chance(0.5)) addDue(s, { key: `repaid${s.year}`, year: s.year + 2, wage: amt / W(s), label: "A loan repaid at last", text: "They pay you back at last:" });
-        log(s, "You give them more time.", "neutral");
+        log(s, `${p.sib ? "Your sibling" : "Your friend"} can't pay you back. You give them more time.`, "neutral");
       } else if (opt === "goods") {
         invest(s, amt * 0.5);
         bump(s, "network", -5);
         bump(s, "happiness", -2);
-        log(s, "You take what they have instead of the money.", "money");
+        log(s, `${p.sib ? "Your sibling" : "Your friend"} can't pay you back. You take what they have instead of the money.`, "money");
       } else {
         const got = c.r.chance(0.5);
         if (got) invest(s, amt * 0.7);
@@ -3787,13 +3787,13 @@ const DEFS: EventDef[] = [
       if (p.kind === "bust") {
         if (opt === "sell") {
           sellProperty(s, prop.id);
-          log(s, "You sell at a loss.", "money");
+          log(s, "Your rental is worth less than you paid. You sell at a loss.", "money");
         } else if (opt === "keys") {
           s.properties = s.properties.filter((x) => x !== prop);
           s.creditLockUntil = Math.max(s.creditLockUntil, s.year + 6);
           delete s.flags.goodCredit;
           log(s, "You hand the keys back. The debt is gone, and so is your credit.", "bad");
-        } else log(s, "You hold on and wait for prices to come back.", "neutral");
+        } else log(s, "Your rental is worth less than you paid. You hold on and wait for prices to come back.", "neutral");
         return;
       }
       if (p.kind === "repair") {
@@ -3801,11 +3801,11 @@ const DEFS: EventDef[] = [
         if (opt === "fix") {
           pay(s, cost);
           prop.value *= 1.02;
-          log(s, `You have the ${p.thing} done properly.`, "money");
+          log(s, `The ${p.thing} in your rental needs work. You have it done properly.`, "money");
         } else if (opt === "patch") {
           pay(s, cost * 0.3);
           if (c.r.chance(0.5)) followUp(s, "rental_trouble", c.r.int(1, 3), { id: prop.id, again: p.thing });
-          log(s, `You patch the ${p.thing} up.`, "money");
+          log(s, `The ${p.thing} in your rental needs work. You patch it up.`, "money");
         } else {
           sellProperty(s, prop.id, 0.06);
           log(s, "You sell the flat as it is.", "money");
@@ -3816,14 +3816,14 @@ const DEFS: EventDef[] = [
       const rent = Number(p.rent);
       if (opt === "evict") {
         pay(s, arrears + rent * 0.3);
-        log(s, "After months in court, the flat is empty again.", "money");
+        log(s, "Your tenant stops paying. After months in court, the flat is empty again.", "money");
       } else if (opt === "plan") {
         if (c.r.chance(0.65)) {
           bump(s, "network", 2);
           log(s, "Your tenant pays it all back over the year.", "good");
         } else {
           pay(s, arrears + rent * 0.25);
-          log(s, "The payment plan falls apart, and they leave owing you.", "bad");
+          log(s, "Your tenant's payment plan falls apart, and they leave owing you.", "bad");
         }
       } else if (opt === "cash") {
         pay(s, arrears + rent * 0.15);
@@ -3956,10 +3956,10 @@ const DEFS: EventDef[] = [
         if (c.r.chance(0.7)) {
           s.flags[key] = "shared";
           bump(s, "network", 3);
-          log(s, "Your siblings agree to take turns.", "good");
+          log(s, `Your siblings agree to take turns caring for your ${who}.`, "good");
         } else {
           bump(s, "happiness", -2);
-          log(s, "Your siblings say they can't.", "bad");
+          log(s, `You ask your siblings to share your ${who}'s care. They say they can't.`, "bad");
         }
       } else if (opt === "payfee") s.flags[fee] = Number(s.flags[fee] ?? 1) * 1.2;
       else if (opt === "cheaper") {
@@ -4073,7 +4073,7 @@ const DEFS: EventDef[] = [
         pay(s, 0.02 * W(s));
         until(s.year);
         bump(s, "happiness", -3);
-        log(s, `You keep your ${pet} comfortable to the end.`, "neutral");
+        log(s, `Your ${pet} falls ill. You keep them comfortable to the end.`, "neutral");
         return;
       } else log(s, `You say goodbye to your ${pet}.`, "bad");
       until(s.year - 1);
@@ -4181,7 +4181,7 @@ const DEFS: EventDef[] = [
         pay(s, extra);
         const prop = flip ? null : s.properties.find((x) => x.id === p.id);
         if (prop) prop.value *= 1.03;
-        log(s, "You put it right, properly.", "money");
+        log(s, "Builders find rot in the flat you're renovating. You put it right, properly.", "money");
       } else if (opt === "hide") {
         if (c.r.chance(0.35)) {
           addDue(s, {
@@ -4192,7 +4192,7 @@ const DEFS: EventDef[] = [
             text: flip ? "The buyer finds what you hid, and sues. It costs you" : "An inspector finds what you hid. Fines and repairs cost you",
           });
         }
-        log(s, "You plaster over the problem.", "neutral");
+        log(s, "Builders find rot in the flat you're renovating. You plaster over it.", "neutral");
       } else if (flip) {
         s.dues = (s.dues ?? []).filter((d) => d.key !== p.key);
         invest(s, (Number(p.price) + Number(p.reno) * 0.5) * 0.85);
@@ -4284,10 +4284,10 @@ const DEFS: EventDef[] = [
         if (c.r.chance(0.6)) {
           commit(s, { key: "commute", label: "Commuting, now and then", wage: -0.02, until: s.year + 5, needsJob: true });
           bump(s, "happiness", 3);
-          log(s, "They agree. You're home most of the week.", "good");
+          log(s, "You ask to work from home, and your employer agrees: you're home most of the week.", "good");
         } else {
           bump(s, "happiness", -1);
-          log(s, "They say no.", "bad");
+          log(s, "You ask to work from home. Your employer says no.", "bad");
         }
       } else commit(s, { key: "commute", label: "Weekly commuting", wage: -0.04, until: s.year + 3, needsJob: true, health: -1, happiness: -3 });
     },
@@ -4325,7 +4325,7 @@ const DEFS: EventDef[] = [
           s.job.mult *= 1.08;
           bump(s, "skill", 3);
           log(s, "Your employer finds you a role that uses your new skills, with a raise.", "good");
-        } else log(s, "Your employer has nothing for you.", "neutral");
+        } else log(s, "You ask for a role that uses your new certificate. Your employer has nothing for you.", "neutral");
       } else if (opt === "side") commit(s, { key: "certside", label: "Freelance work on the side", wage: 0.1, until: s.year + 4, happiness: -1 });
     },
   },
@@ -4452,7 +4452,7 @@ const DEFS: EventDef[] = [
         const roll = c.r.next();
         if (roll < 0.5) price *= 1.2;
         else if (roll < 0.8) {
-          log(s, "The buyer walks away.", "bad");
+          log(s, `The buyer for ${s.business?.name ?? "your business"} walks away.`, "bad");
           return;
         }
       }

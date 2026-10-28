@@ -4,13 +4,14 @@
 // health and mortality.
 
 import { BIZ, TECH_STAGES } from "./content/business";
+import { choiceLine } from "./content/choices";
 import { makeName, nameGroupFor } from "./content/names";
 import { OCC } from "./content/occupations";
 import { finishDeskYear, markDeskYearStart } from "./desk";
 import { backToSchool, enqueue, EVENT_MAP, EVENTS, destinations, lookForWork, rentIncome, syncAllocation, type EventCtx } from "./events";
-import { oneIn, pct, topPercent } from "./format";
+import { oneIn, pct, signedPct, topPercent } from "./format";
 import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
-import { industryGrowth, INDUSTRY_NAMES } from "./labour";
+import { industryGrowth, INDUSTRY_NAMES, type Industry } from "./labour";
 import { econ, toIntl2021, type YearEcon } from "./macro";
 import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
 import {
@@ -20,6 +21,7 @@ import {
   stockValue, totalDebt, usdPremium,
 } from "./ops";
 import { stream, type Rng } from "./rng";
+import { yearLine } from "./story";
 import { graduate, startSchool, tuitionPerYear } from "./school";
 import {
   ASSET_KEYS, type Allocation, type AssetKey, type Era, type Lifestyle, type LifeState, type Setup, type Stock,
@@ -285,6 +287,24 @@ export function beginYear(s: LifeState): void {
   if (!s.alive) return;
   if (s.age === 50 && twinHook && !s.flags.isTwin && s.flags.twin50 == null) s.flags.twin50 = twinHook(s);
   rollEvents(s, e);
+}
+
+/** A line on your industry when its hiring turns, deepens or settles, rather than the same line every year. */
+function industryNote(s: LifeState, ind: Industry, g: number): void {
+  const was = String(s.flags.indMood ?? "");
+  // a boom or a bust lasts until hiring clearly turns, so a slightly slower boom isn't called over
+  const mood = g <= (was === `${ind}:bust` ? -0.02 : -0.05) ? "bust" : g >= (was === `${ind}:boom` ? 0.04 : 0.08) ? "boom" : "calm";
+  s.flags.indMood = `${ind}:${mood}`;
+  const name = INDUSTRY_NAMES[ind];
+  const Name = name[0].toUpperCase() + name.slice(1);
+  if (mood === "calm") {
+    if (was === `${ind}:boom`) log(s, `The hiring boom in ${name} is over: jobs ${signedPct(g)} this year.`, "neutral");
+    else if (was === `${ind}:bust`) log(s, `The job losses in ${name} stop: jobs ${signedPct(g)} this year.`, "good");
+  } else if (mood === "boom") {
+    if (was !== `${ind}:boom`) log(s, `${Name} is booming here: jobs grew ${pct(g, 0)} this year.`, "good");
+    else if (g >= 0.15) log(s, `Still booming: jobs in ${name} grew another ${pct(g, 0)}.`, "good");
+  } else if (was !== `${ind}:bust`) log(s, `Jobs in ${name} here fell ${pct(-g, 0)} this year.`, "bad");
+  else if (g <= -0.12) log(s, `${Name} is still shedding jobs: another ${pct(-g, 0)} gone.`, "bad");
 }
 
 function transitions(s: LifeState, e: YearEcon, r: Rng): void {
@@ -587,8 +607,12 @@ export function choose(s: LifeState, decisionId: string, optionId: string): void
   const e = ec(s);
   const c: EventCtx = { e, prev: ec(s, s.year - 1), w: e.wage, r: stream(s.seed, "res", d.event, s.year, optionId) };
   const before = netWorth(s);
+  const lines = s.log.length;
   EVENT_MAP[d.event].resolve(s, c, d.payload, optionId);
   addMove(s, `ev:${d.title}`, netWorth(s) - before);
+  // a choice its event doesn't write up still goes in the year's entry
+  const line = s.log.length === lines ? choiceLine(s, d, optionId) : null;
+  if (line) log(s, ...line);
 }
 
 // ------------------------------------------------------------------ resolve year
@@ -777,8 +801,7 @@ export function resolveYear(s: LifeState): void {
     if (s.job.formal) s.formalYears++;
     s.indYears = { ...s.indYears, [ind]: (s.indYears?.[ind] ?? 0) + 1 };
     const g = industryGrowth(s.country, s.year, ind, s.macroSeed);
-    if (g <= -0.05) log(s, `Jobs in ${INDUSTRY_NAMES[ind]} here fell ${pct(-g, 0)} this year.`, "bad");
-    else if (g >= 0.08) log(s, `${INDUSTRY_NAMES[ind][0].toUpperCase()}${INDUSTRY_NAMES[ind].slice(1)} is booming here: jobs grew ${pct(g, 0)} this year.`, "good");
+    industryNote(s, ind, g);
     const boom = clamp(0.2 * g, -0.01, 0.03);
     s.job.mult *= (1 + (fieldExp(s, ind) <= occ.peak ? occ.growth : 0) + boom) * Math.exp(r.normal(-0.0001, 0.015));
   } else if (adult(s) && !s.retired && !s.school && !s.business && s.age >= 18) s.unemployedYears++;
@@ -983,6 +1006,9 @@ function record(s: LifeState, income: number, spending: number, kept: number): v
     country: s.country,
     moves,
   });
+  // the year's money, in a line at the end of its entry
+  const line = yearLine(s, s.history[s.history.length - 1], prevRec, ec(s).wage, ec(s, s.year - 1).wage, ec(s).infl);
+  if (line) log(s, ...line);
   void prevLiquid;
   s.peakReal = Math.max(s.peakReal, real);
   delete s.flags.lastNet;
