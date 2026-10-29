@@ -6,6 +6,7 @@ import { econ, intlToUsd, toIntl2021 } from "./macro";
 import { liquid } from "./ops";
 import { replay, runLife, steady, typical } from "./policy";
 import { hashString, stream } from "./rng";
+import { collect, standingOf, type ByAge, type Standing } from "./standing";
 import type { LifeState } from "./types";
 import { country, countryName, devLevel, world } from "./world";
 
@@ -43,6 +44,7 @@ export interface Report {
   twin: { age: number; real: number }[];
   steady: { age: number; real: number }[];
   facts: string[];
+  standing: Standing; // where you stood among people your age, year by year
 }
 
 const FLOOR = 1500; // intl $ added before taking ratios so near-zero outcomes don't explode
@@ -81,6 +83,7 @@ export function randomLifestyle(seed: number): LifeState["lifestyle"] {
 export interface ReportOptions {
   worldN?: number;
   countryN?: number;
+  abroadN?: number; // people born the same year in the country you moved to, if you did
   marketN?: number;
   onProgress?: (done: number, total: number) => void;
 }
@@ -89,7 +92,9 @@ export async function buildReport(s: LifeState, opts: ReportOptions = {}): Promi
   const worldN = opts.worldN ?? 160;
   const countryN = opts.countryN ?? 80;
   const marketN = opts.marketN ?? 12;
-  const total = worldN + countryN + marketN + 2;
+  const abroadIso = s.country !== s.birthCountry ? s.country : null;
+  const abroadN = abroadIso ? (opts.abroadN ?? 60) : 0;
+  const total = worldN + countryN + abroadN + marketN + 2;
   let done = 0;
   const progress = () => opts.onProgress?.(++done, total);
 
@@ -98,6 +103,8 @@ export async function buildReport(s: LifeState, opts: ReportOptions = {}): Promi
   const steadyTwin = replay(s, steady);
   progress();
 
+  // everyone born the same year: their lifetime wealth for the ranks, and their wealth at each age
+  const byWorld: ByAge = [];
   const peaksWorld: number[] = [];
   for (let i = 0; i < worldN; i++) {
     const t = createLife({ mode: "random", seed: hashString(`${s.seed}|world|${i}`), macroSeed: s.macroSeed, birthYear: s.birthYear });
@@ -105,9 +112,11 @@ export async function buildReport(s: LifeState, opts: ReportOptions = {}): Promi
     t.lifestyle = randomLifestyle(t.seed);
     runLife(t, typical);
     peaksWorld.push(lifetimeWealth(t));
+    collect(byWorld, t);
     progress();
     if (i % 10 === 9) await tick();
   }
+  const byCountry: ByAge = [];
   const peaksCountry: number[] = [];
   for (let i = 0; i < countryN; i++) {
     const t = createLife({ mode: "random", seed: hashString(`${s.seed}|country|${i}`), macroSeed: s.macroSeed, birthYear: s.birthYear, country: s.birthCountry });
@@ -115,6 +124,17 @@ export async function buildReport(s: LifeState, opts: ReportOptions = {}): Promi
     t.lifestyle = randomLifestyle(t.seed);
     runLife(t, typical);
     peaksCountry.push(lifetimeWealth(t));
+    collect(byCountry, t);
+    progress();
+    if (i % 10 === 9) await tick();
+  }
+  const byAbroad: ByAge = [];
+  for (let i = 0; i < abroadN; i++) {
+    const t = createLife({ mode: "random", seed: hashString(`${s.seed}|abroad|${i}`), macroSeed: s.macroSeed, birthYear: s.birthYear, country: abroadIso! });
+    t.flags.isTwin = true;
+    t.lifestyle = randomLifestyle(t.seed);
+    runLife(t, typical);
+    collect(byAbroad, t);
     progress();
     if (i % 10 === 9) await tick();
   }
@@ -167,6 +187,11 @@ export async function buildReport(s: LifeState, opts: ReportOptions = {}): Promi
     twin: twin.history.map((h) => ({ age: h.age, real: h.realNW })),
     steady: steadyTwin.history.map((h) => ({ age: h.age, real: h.realNW })),
     facts: facts(s),
+    standing: standingOf(s, {
+      world: { by: byWorld, n: worldN },
+      home: { by: byCountry, n: countryN },
+      abroad: abroadIso ? { by: byAbroad, n: abroadN, iso: abroadIso } : undefined,
+    }),
   };
   if (s.mode === "timetravel") report.hindsight = hindsight(s);
   return report;

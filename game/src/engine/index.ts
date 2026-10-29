@@ -29,3 +29,4 @@ export {
 } from "./markets";
 export { farewell, type Farewell, type Moment, type YearTold } from "./ending";
 export { causePhrase } from "./mortality";
+export { rankLabel, type Band, type Cohort, type RankPoint, type Standing, type StandingStat } from "./standing";

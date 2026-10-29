@@ -341,8 +341,9 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   }
   if (s.age >= 18 && s.livingWithParents && (s.age >= 27 || s.partner || !(s.parents.alive[0] || s.parents.alive[1]))) s.livingWithParents = false;
 
-  // most of the world's poor own a home they or their family built on family land
-  if (s.age === 28 && !s.properties.length && s.country === s.birthCountry && !s.flags.familyHome) {
+  // most of the world's poor own a home they or their family built on family land, at an age of their own between 23 and 33
+  const settleAge = 23 + Math.floor(stream(s.seed, "family home age").next() * 11);
+  if (s.age === settleAge && !s.properties.length && s.country === s.birthCountry && !s.flags.familyHome) {
     const agr = (nearest(s.country, "agr", s.year) ?? 30) / 100;
     const p = clamp((agr * 1.2 + 0.2) * (1 - 0.5 * dev(s)), 0.05, 0.85);
     if (r.chance(p)) {

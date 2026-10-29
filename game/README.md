@@ -235,7 +235,8 @@ same health draws, same markets):
 
 - **Default you** makes the most common choice at every turn.
 - **Index-fund you** makes those choices but saves into a broad index and never panics.
-- **250 other people** born the same year — anywhere in the world, and in your country.
+- **250 other people** born the same year — anywhere in the world, and in your country
+  (plus 60 born in the country you moved to, if you emigrated).
 
 Every life has a code that replays the same birth in the same world: a birth year and a
 seed (`1985-1408823311`), or year, country, family and seed for a trip back in time
@@ -247,6 +248,20 @@ born (your country's median vs. the world's), family and fortune (default-you vs
 country's median) and your choices (you vs. default-you). The grade S–D measures only
 the last one. Time travellers also see what perfect hindsight would have made from the
 same savings.
+
+The statement also ranks you among those people at every age, counting only the ones still
+alive: in the world, in your country and, from the year you arrived, in the country you moved
+to. One chart follows those ranks year by year; the other sets your net worth against the
+typical person your age and the middle half and middle 80% of them, in whichever place you
+pick, on an axis that shows debts and fortunes together. Above the charts sit three or four
+numbers chosen for the life: always your best world rank and roughly how many people born
+that year were still ahead of you, then whichever say the most of your rank at home or in
+your new country, how you compared with the typical 60-year-old, years in the world's top 10%
+or 1%, years in debt, the biggest fall or climb, and where you ended up. Best ranks, falls and
+climbs are read from 30, because before then most people own next to nothing and small sums
+swing a rank. "Typical" is the median: in a sample this size a single fortune can multiply the
+average. Past the richest person sampled, a rank comes from a Pareto tail fitted to the top
+tenth, so a large fortune still gets a rank.
 
 ## Run it
 

@@ -363,7 +363,7 @@ body::before {
 .ledger-empty { padding: 24px 16px; color: var(--muted); }
 
 .side { display: grid; gap: 16px; }
-.card { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: grid; gap: 12px; }
+.card { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .balance .big { font-family: var(--font-mono); font-size: clamp(30px, 5vw, 42px); line-height: 1.05; letter-spacing: -0.02em; }
 .balance .big.neg { color: var(--stamp); }
 .flows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -526,6 +526,8 @@ body::before {
 .luck-row .fill.neg { background: var(--div-neg); border-radius: 4px 0 0 4px; }
 .luck-row .x { font-family: var(--font-mono); text-align: right; }
 .chart-wrap { position: relative; }
+.age-chart { display: grid; gap: 8px; min-width: 0; }
+.chart-plot { position: relative; }
 .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -779,6 +781,15 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
   .moment-list li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .told-years { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ----------------------------------------------------------------- among people your age */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.tile { display: grid; gap: 4px; align-content: start; padding: 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); }
+.tile-label { font-size: 13px; color: var(--ink-2); }
+.tile-value { font: 600 26px/1.15 var(--font-body); color: var(--ink); }
+.peers-controls { justify-content: space-between; }
+.legend i.swatch { width: 14px; height: 10px; border-radius: 2px; }
+.chart-wrap svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

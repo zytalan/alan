@@ -7,6 +7,7 @@ import { formatMult, LifeChart, LuckBars } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
 import { Farewell } from "./Farewell";
 import { LifeStrip } from "./LifeStrip";
+import { Peers } from "./Peers";
 import { ShareImage, StoneImage } from "./ShareCard";
 
 /** The life in a few sentences, and the years that did the most for your money and the most against it. */
@@ -138,7 +139,9 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
       <main className="wrap loading" aria-live="polite">
         <div style={{ display: "grid", gap: 12, width: "min(420px, 100%)" }}>
           <span className="eyebrow">Statement of a life</span>
-          <p style={{ margin: 0 }}>Living 250 other lives born in {s.birthYear} to see where you stand…</p>
+          <p style={{ margin: 0 }}>
+            Living {s.country !== s.birthCountry ? 310 : 250} other lives born in {s.birthYear} to see where you stand…
+          </p>
           <div className="progress">
             <span style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
@@ -195,6 +198,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     `Died at ${r.age}${r.cause ? `, ${causePhrase(r.cause)}` : ""}`,
     `Peak wealth ≈ ${usd(r.peakUsd)} in today's money; richer over a lifetime than ${beat(r.worldPct)} of people born that year`,
     `Birth ${formatMult(r.luck.country)} · Fortune ${formatMult(r.luck.family)} · Choices ${formatMult(r.luck.choices)} (grade ${r.grade})`,
+    ...r.standing.stats.filter((x) => x.key === "world").map((x) => `Best world rank for my age: ${x.value.toLowerCase()}`),
     r.hindsight ? `Time travel: captured ${captured(r.hindsight.captured)} of perfect hindsight` : "",
     told ? `“${told.epitaph}”` : "",
     `Life code ${lifeCode(s)}`,
@@ -266,6 +270,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
       {told && <LifeTold f={told} />}
 
       <LifeStrip s={s} title="Your life, year by year" />
+
+      <Peers s={s} r={r} />
 
       <section className="grid2">
         <div className="card">
