@@ -205,6 +205,19 @@ help with a first home. The statement adds up what you inherited, paid for care,
 each child gets in years of a typical wage. It also draws your life as a picture to
 save or share: the coin, your peak wealth, the grade, the strip and the life's code.
 
+A death isn't over in a line. The screen says how and where the life ended, with its last
+year and how many of the people born in the same place and year lived longer (from the
+same life tables that decide when you die). Then the life passes in a dozen moments
+(birth, school, first job, weddings, children, a home, crashes, retirement), one after
+another, or as a list if your device asks for less motion, and then the funeral: who came,
+what you left, and a gravestone with your dates, the days you lived and an epitaph read from
+the life. Building a business, holding on through every crash or making a home far from
+where you were born each earn their own line; otherwise it's what you said at 30 money was
+for, and whether the life delivered it ("Kept everyone safe." or "Tried to keep everyone
+safe."). The stone is a picture to save or share beside the statement card. The statement
+then opens with the whole life in a paragraph and its best and worst years for money, after
+inflation, each with its biggest cause and the ledger's own line about it.
+
 The life saves itself in your browser as you play. Reload or come back later and
 Continue picks up the same year; only one unfinished life is kept, so starting another
 asks first.
@@ -305,10 +318,12 @@ and Eritrea are missing because the World Bank has no usable economic series for
 pipeline/   fetch.py, build.py — raw downloads → public/data/world.json and markets.json
             (monthly history, loaded the first time you open the desk)
 src/engine/ the simulation (no UI): economy paths, mortality, careers, businesses,
-            events, the yearly loop, automatic players, the end-of-life report;
+            events, the yearly loop, automatic players, the end-of-life report and
+            the life told at its end (ending.ts);
             markets.ts (monthly prices, companies) and desk.ts (the trading account)
 src/ui/     React screens: start, birth lottery and certificate, ledger, decisions,
-            trading desk, statement; the coin, life strip and front page
+            trading desk, farewell, statement; the coin, life strip, front page and
+            the shareable cards
 scripts/    simulate.ts and trace.ts for balancing, geo.mjs for the map,
             artifact-page.mjs for publishing
 tests/      vitest suite

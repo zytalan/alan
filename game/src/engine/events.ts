@@ -293,6 +293,16 @@ const COLLEGE_DID: Record<string, string> = {
   no: "told them to get a job",
 };
 
+/** What each kind of business is, in a sentence. */
+const BIZ_KIND: Record<BizType, string> = {
+  stall: "a street stall",
+  shop: "a shop",
+  trading: "an import and export business",
+  workshop: "a workshop",
+  agency: "a services firm",
+  tech: "a tech startup",
+};
+
 /** The business a side hustle grows into. */
 const HUSTLE_BIZ: Record<string, BizType> = {
   tutor: "agency", drive: "agency", market: "shop", online: "trading", repair: "workshop", deliver: "agency", translate: "agency", bar: "shop", freelance: "agency",
@@ -4387,7 +4397,7 @@ const DEFS: EventDef[] = [
         if (!s.job && !s.school && s.age < retirementAge(s)) lookForWork(s);
         return;
       }
-      if (startBusiness(s, opt as BizType, c.r)) log(s, `You start ${s.business!.name}, a ${BIZ[opt as BizType].title.toLowerCase()}.`, "milestone");
+      if (startBusiness(s, opt as BizType, c.r)) log(s, `You start ${s.business!.name}, ${BIZ_KIND[opt as BizType]}.`, "milestone");
     },
   },
   {

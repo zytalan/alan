@@ -4,7 +4,7 @@
 
 import { BIZ, STOCK_IDEAS, TECH_STAGES } from "./content/business";
 import { FIELD_NAMES, MAJORS, OCC, OCCUPATIONS, titleAt, TRADES, type Occupation } from "./content/occupations";
-import { money, usd } from "./format";
+import { aTitle, money, usd } from "./format";
 import { capitalControl, cryptoBan, goldRule } from "./history";
 import { AREA_OF, AREAS, industryGrowth, recentGrowth, type Area, type Industry } from "./labour";
 import { econ, intlToUsd, toIntl2021, type YearEcon } from "./macro";
@@ -95,8 +95,9 @@ export function commitments(s: LifeState): Recurring[] {
   return (s.recurring ?? []).filter((x) => x.until >= s.year && (!x.needsJob || (s.job && !s.retired)));
 }
 
-export function log(s: LifeState, text: string, tone: Tone = "neutral"): void {
-  s.log.push({ year: s.year, age: s.age, text, tone });
+/** Add a line to the year's entry; `about` names the move in the year's money that the line explains. */
+export function log(s: LifeState, text: string, tone: Tone = "neutral", about?: string): void {
+  s.log.push(about ? { year: s.year, age: s.age, text, tone, about } : { year: s.year, age: s.age, text, tone });
 }
 
 export function bump(s: LifeState, key: keyof Stats, delta: number): void {
@@ -714,6 +715,8 @@ export function takeJob(s: LifeState, offer: Offer): void {
   const o = OCC[offer.occ];
   if (s.job && s.job.occ !== offer.occ) s.counters.jobChanges++;
   s.job = { occ: o.id, title: offer.title, mult: offer.mult, years: 0, level: offer.level ?? 0, formal: o.formal, industry: offer.industry ?? o.industry };
+  s.flags.firstJob ??= `${aTitle(offer.title)} at ${offer.employer}`;
+  s.flags.firstOcc ??= o.id;
   s.unemployedYears = 0;
   s.retired = false;
   const past = new Set(String(s.flags.pastJobs ?? "").split(",").filter(Boolean));

@@ -157,6 +157,7 @@ export interface LogEntry {
   age: number;
   text: string;
   tone: Tone;
+  about?: string; // what the line tells of the year's money: "money" for the yearly line, a move's key ("ev:<title>") for a choice's outcome
 }
 
 export interface YearRecord {

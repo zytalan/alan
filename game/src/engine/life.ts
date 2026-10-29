@@ -13,7 +13,7 @@ import { oneIn, pct, signedPct, topPercent } from "./format";
 import { CRYPTO_FAILURES, DEPOSIT_SHOCKS, notesFor } from "./history";
 import { industryGrowth, INDUSTRY_NAMES, type Industry } from "./labour";
 import { econ, toIntl2021, type YearEcon } from "./macro";
-import { causeOfDeath, deathProbability, referenceHealth } from "./mortality";
+import { causeOfDeath, causePhrase, deathProbability, referenceHealth } from "./mortality";
 import {
   addMove, adult, buyProperty, buyStock, bump, careAid, careCost, caughtInFailure, clamp, commitments, consumerRate, creditLimit, dev, ec, endCommitment,
   endBusiness, fieldExp, fmt, gainsTaxRate, homePrice, incomeTaxRate, invest, jobIndustry, liquid, log, loseJob, makeStock, netWorth, pay,
@@ -350,10 +350,11 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       const cost = Math.min(liquid(s) * 0.5, value * 0.3);
       const paid = raiseCash(s, cost);
       s.properties.push({ id: `p${s.year}-fam`, kind: "home", value, price: value, mortgage: 0, rate: 0, payment: 0, bought: s.year });
-      addMove(s, agr > 0.3 ? "ev:A house on family land" : "ev:The family home", value - paid);
+      const key = agr > 0.3 ? "ev:A house on family land" : "ev:The family home";
+      addMove(s, key, value - paid);
       s.flags.familyHome = true;
       s.livingWithParents = false;
-      log(s, agr > 0.3 ? "You build a simple house on family land." : "You move into the family home.", "milestone");
+      log(s, agr > 0.3 ? "You build a simple house on family land." : "You move into the family home.", "milestone", key);
     }
   }
 
@@ -376,7 +377,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
           if (s.age >= 18) invest(s, estate);
           else s.cashHome += estate;
           addMove(s, "inherit", estate);
-          log(s, `You inherit ${fmt(s, estate)}.`, "money");
+          log(s, `You inherit ${fmt(s, estate)}.`, "money", "inherit");
         }
         if (s.age < 18) s.parents.incomeMult *= 0.4;
       }
@@ -396,7 +397,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     if (share > 0) {
       const paid = share - pay(s, share);
       addMove(s, `ev:Your ${who}'s care`, -paid);
-      log(s, `Your share of your ${who}'s care this year: ${fmt(s, paid)}.`, "money");
+      log(s, `Your share of your ${who}'s care this year: ${fmt(s, paid)}.`, "money", `ev:Your ${who}'s care`);
     }
   }
   const care = [s.flags.care0, s.flags.care1];
@@ -416,7 +417,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     if (amount >= 0) invest(s, amount);
     else moved = -(-amount - pay(s, -amount));
     addMove(s, `ev:${d.label}`, moved);
-    log(s, `${d.text} ${fmt(s, Math.abs(moved))}.`, amount >= 0 ? "good" : "bad");
+    log(s, `${d.text} ${fmt(s, Math.abs(moved))}.`, amount >= 0 ? "good" : "bad", `ev:${d.label}`);
   }
   if (s.dues?.length) s.dues = s.dues.filter((x) => x.year > s.year);
 
@@ -463,7 +464,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       const payout = amt * 0.3;
       invest(s, payout);
       addMove(s, "ev:The 'guaranteed' fund", payout);
-      log(s, `Your 'guaranteed' fund pays out ${fmt(s, payout)}. It works!`, "money");
+      log(s, `Your 'guaranteed' fund pays out ${fmt(s, payout)}. It works!`, "money", "ev:The 'guaranteed' fund");
     } else {
       log(s, `The scheme collapses. The ${fmt(s, amt)} you put in is gone.`, "bad");
       s.counters.scams++;
@@ -475,7 +476,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
         if (r.chance(0.25)) {
           const paid = 0.5 * w - pay(s, 0.5 * w);
           addMove(s, "ev:Sued by the people you recruited", -paid);
-          log(s, `Some of them sue you. It costs ${fmt(s, paid)}.`, "bad");
+          log(s, `Some of them sue you. It costs ${fmt(s, paid)}.`, "bad", "ev:Sued by the people you recruited");
         }
         delete s.flags.ponziRecruited;
       }
@@ -505,7 +506,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     const fail = CRYPTO_FAILURES.find((f) => f.at[0] === s.year && (!f.where || f.where.includes(s.country)));
     if (fail && s.cryptoCustody === "exchange" && caughtInFailure(s, fail)) {
       const lost = s.holdings.crypto;
-      log(s, `${fail.name} collapses with your coins inside. ${fmt(s, lost)} gone${fail.repay ? ", for now" : ""}.`, "bad");
+      log(s, `${fail.name} collapses with your coins inside. ${fmt(s, lost)} gone${fail.repay ? ", for now" : ""}.`, "bad", `ev:${fail.name} collapses`);
       addMove(s, `ev:${fail.name} collapses`, -lost);
       if (fail.repay) {
         // the claim is kept in coins, or in dollars at about the price when it failed
@@ -516,7 +517,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       s.holdings.crypto = 0;
       syncAllocation(s);
     } else if (s.cryptoCustody === "self" && r.chance(s.flags.walletBackup ? 0.002 : 0.01)) {
-      log(s, `You can't find your wallet's recovery phrase. ${fmt(s, s.holdings.crypto)} in bitcoin is locked away forever.`, "bad");
+      log(s, `You can't find your wallet's recovery phrase. ${fmt(s, s.holdings.crypto)} in bitcoin is locked away forever.`, "bad", "ev:A lost recovery phrase");
       addMove(s, "ev:A lost recovery phrase", -s.holdings.crypto);
       s.holdings.crypto = 0;
       syncAllocation(s);
@@ -533,12 +534,12 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
       syncAllocation(s);
     } else invest(s, value);
     addMove(s, `ev:${f.name} repays`, value);
-    log(s, `${f.repay.text.replace(/\.$/, "")} (${fmt(s, value)}).`, "good");
+    log(s, `${f.repay.text.replace(/\.$/, "")} (${fmt(s, value)}).`, "good", `ev:${f.name} repays`);
   }
   if (s.flags.loanBack === s.year) {
     invest(s, Number(s.flags.loanAmt));
     addMove(s, "ev:Your sibling pays you back", Number(s.flags.loanAmt));
-    log(s, `Your sibling pays you back ${fmt(s, Number(s.flags.loanAmt))}.`, "good");
+    log(s, `Your sibling pays you back ${fmt(s, Number(s.flags.loanAmt))}.`, "good", "ev:Your sibling pays you back");
   }
   if (s.age < 16 && e.war >= 20 && r.chance(clamp(e.war / 2500, 0.02, 0.6))) {
     bump(s, "health", -6);
@@ -550,7 +551,7 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
     const lost = s.cashHome * 0.5;
     s.cashHome -= lost;
     addMove(s, "ev:Thieves", -lost);
-    log(s, `Thieves find the cash you keep at home. ${fmt(s, lost)} gone.`, "bad");
+    log(s, `Thieves find the cash you keep at home. ${fmt(s, lost)} gone.`, "bad", "ev:Thieves");
   }
 }
 
@@ -613,6 +614,7 @@ export function choose(s: LifeState, decisionId: string, optionId: string): void
   // a choice its event doesn't write up still goes in the year's entry
   const line = s.log.length === lines ? choiceLine(s, d, optionId) : null;
   if (line) log(s, ...line);
+  for (let k = lines; k < s.log.length; k++) s.log[k].about ??= `ev:${d.title}`;
 }
 
 // ------------------------------------------------------------------ resolve year
@@ -804,6 +806,12 @@ export function resolveYear(s: LifeState): void {
     industryNote(s, ind, g);
     const boom = clamp(0.2 * g, -0.01, 0.03);
     s.job.mult *= (1 + (fieldExp(s, ind) <= occ.peak ? occ.growth : 0) + boom) * Math.exp(r.normal(-0.0001, 0.015));
+    // the best-paid work of your life, for the story told at its end
+    if (s.job.mult > Number(s.flags.bestMult ?? 0)) {
+      s.flags.bestMult = s.job.mult;
+      s.flags.bestJob = s.job.title;
+      s.flags.bestOcc = s.job.occ;
+    }
   } else if (adult(s) && !s.retired && !s.school && !s.business && s.age >= 18) s.unemployedYears++;
   if (s.partner && s.age < 50) s.partner.mult *= 1.005;
 
@@ -964,7 +972,7 @@ function updateStats(s: LifeState, e: YearEcon, r: Rng, deprivation: number, con
 function die(s: LifeState, cause: string): void {
   s.alive = false;
   s.death = { year: s.year, age: s.age, cause };
-  log(s, `You die at ${s.age}, of ${cause}.`, "milestone");
+  log(s, `You die at ${s.age}, ${causePhrase(cause)}.`, "milestone");
   const estate = netWorth(s);
   if (s.age < 18) return;
   const heirs = s.kids.length;
@@ -1008,7 +1016,10 @@ function record(s: LifeState, income: number, spending: number, kept: number): v
   });
   // the year's money, in a line at the end of its entry
   const line = yearLine(s, s.history[s.history.length - 1], prevRec, ec(s).wage, ec(s, s.year - 1).wage, ec(s).infl);
-  if (line) log(s, ...line);
+  if (line) {
+    log(s, ...line);
+    s.log[s.log.length - 1].about = "money";
+  }
   void prevLiquid;
   s.peakReal = Math.max(s.peakReal, real);
   delete s.flags.lastNet;

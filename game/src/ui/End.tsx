@@ -1,12 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  buildReport, country, countryIn, countryName, deskValue, flagEmoji, intlToUsd, lifeCode, localUnitsReadable, nearest, oneIn, pct,
-  toIntl2021, usd, wageYears, type LifeState, type Report,
+  buildReport, causePhrase, country, countryIn, countryName, deskValue, farewell, flagEmoji, intlToUsd, lifeCode, localUnitsReadable, nearest, oneIn, pct,
+  toIntl2021, usd, wageYears, type Farewell as Told, type LifeState, type Report, type YearTold,
 } from "../engine";
 import { formatMult, LifeChart, LuckBars } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
+import { Farewell } from "./Farewell";
 import { LifeStrip } from "./LifeStrip";
-import { ShareImage } from "./ShareCard";
+import { ShareImage, StoneImage } from "./ShareCard";
+
+/** The life in a few sentences, and the years that did the most for your money and the most against it. */
+function LifeTold({ f }: { f: Told }) {
+  const year = (t: YearTold, label: string, tone: "good" | "bad") => (
+    <div className={`told ${tone}`}>
+      <span className="eyebrow">{label}</span>
+      <b>
+        {t.year}, at {t.age}
+      </b>
+      <span className="v num">
+        {t.usd >= 0 ? "+" : "−"}
+        {usd(Math.abs(t.usd))}
+      </span>
+      {t.why && <span className="note">Biggest cause: {t.why}</span>}
+      {t.line && <p>{t.line}</p>}
+    </div>
+  );
+  return (
+    <section className="card">
+      <span className="eyebrow">Your life</span>
+      <div className="story-text">
+        {f.story.map((p, i) => (
+          <p key={i}>{p}</p>
+        ))}
+      </div>
+      <p className="epitaph">“{f.epitaph}”</p>
+      {(f.best || f.worst) && (
+        <>
+          <span className="eyebrow">Change in your net worth over a year, after inflation, in today's US dollars</span>
+          <div className="told-years">
+            {f.best && year(f.best, "Your best year", "good")}
+            {f.worst && year(f.worst, "Your worst year", "bad")}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
 /** Money that passed between generations: what you inherited, gave and left. */
 function FamilyMoney({ s, r }: { s: LifeState; r: Report }) {
@@ -73,6 +112,10 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
   const [report, setReport] = useState<Report | null>(null);
   const [progress, setProgress] = useState(0);
   const [copied, setCopied] = useState(false);
+  // an adult life gets its farewell before the statement, while the statement is worked out
+  const told = useMemo(() => (s.death && s.death.age >= 18 ? farewell(s) : null), [s]);
+  const [phase, setPhase] = useState<"farewell" | "statement">(told ? "farewell" : "statement");
+  const [card, setCard] = useState<"statement" | "stone">("statement");
 
   useEffect(() => {
     let live = true;
@@ -87,6 +130,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     // a report is built once per finished life
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s]);
+
+  if (phase === "farewell" && told) return <Farewell s={s} f={told} onDone={() => (setPhase("statement"), window.scrollTo(0, 0))} />;
 
   if (!report) {
     return (
@@ -147,10 +192,11 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
   const share = [
     `Lot in Life — ${r.name}`,
     `Born ${r.birthYear} in ${here} (${oneIn(Number(s.flags.birthShare ?? 0))} babies that year)`,
-    `Died at ${r.age}${r.cause ? `, of ${r.cause}` : ""}`,
+    `Died at ${r.age}${r.cause ? `, ${causePhrase(r.cause)}` : ""}`,
     `Peak wealth ≈ ${usd(r.peakUsd)} in today's money; richer over a lifetime than ${beat(r.worldPct)} of people born that year`,
     `Birth ${formatMult(r.luck.country)} · Fortune ${formatMult(r.luck.family)} · Choices ${formatMult(r.luck.choices)} (grade ${r.grade})`,
     r.hindsight ? `Time travel: captured ${captured(r.hindsight.captured)} of perfect hindsight` : "",
+    told ? `“${told.epitaph}”` : "",
     `Life code ${lifeCode(s)}`,
   ]
     .filter(Boolean)
@@ -190,7 +236,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
           <p style={{ margin: 0, color: "var(--ink-2)" }}>
             {r.birthYear}–{r.deathYear} · {countryName(s.birthCountry)}
             {s.country !== s.birthCountry ? ` → ${countryName(s.country)}` : ""} · died at {r.age}
-            {r.cause ? `, of ${r.cause}` : ""}
+            {r.cause ? `, ${causePhrase(r.cause)}` : ""}
           </p>
           <p className="tier">
             Your coin at its best: <b>{METAL_LABEL[metal]}</b>
@@ -216,6 +262,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
           </p>
         </div>
       </section>
+
+      {told && <LifeTold f={told} />}
 
       <LifeStrip s={s} title="Your life, year by year" />
 
@@ -301,7 +349,17 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
       <section className="grid2">
         <div className="card share">
           <span className="eyebrow">Share this life</span>
-          <ShareImage s={s} r={r} />
+          {told && (
+            <div className="seg share-pick" role="group" aria-label="Picture to share">
+              <button aria-pressed={card === "statement"} onClick={() => setCard("statement")}>
+                Statement
+              </button>
+              <button aria-pressed={card === "stone"} onClick={() => setCard("stone")}>
+                Gravestone
+              </button>
+            </div>
+          )}
+          {card === "stone" && told ? <StoneImage s={s} f={told} /> : <ShareImage s={s} r={r} />}
           <pre id="share-text">{share}</pre>
           <div className="actions">
             <button className="btn small" onClick={copy}>
@@ -341,7 +399,7 @@ function ShortLife({ s, r, onAgain, onReplay }: { s: LifeState; r: Report; onAga
         </h1>
         <p style={{ margin: 0, color: "var(--ink-2)" }}>
           {r.birthYear}–{r.deathYear} · {countryName(s.birthCountry)} · died at {r.age}
-          {r.cause ? `, of ${r.cause}` : ""}
+          {r.cause ? `, ${causePhrase(r.cause)}` : ""}
         </p>
       </header>
       <section className="card" style={{ maxWidth: 720 }}>

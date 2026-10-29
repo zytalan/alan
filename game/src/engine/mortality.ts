@@ -99,6 +99,13 @@ export function deathProbability(iso: string, year: number, sex: Sex, age: numbe
   return clamp(q * mult, 0, 1);
 }
 
+/** How a death is told after "died at 70,": "of a stroke", "in a road accident", "killed in the fighting". */
+export function causePhrase(cause: string): string {
+  if (cause.startsWith("killed ")) return cause;
+  if (/accident$/.test(cause)) return `in ${cause}`;
+  return `of ${cause}`;
+}
+
 export function causeOfDeath(age: number, dev: number, rng: Rng, war: boolean): string {
   if (war && age >= 15 && rng.chance(0.5)) return "killed in the fighting";
   if (age < 1) return rng.pick(dev < 0.4 ? ["complications at birth", "an infection", "pneumonia"] : ["complications at birth", "a congenital condition"]);

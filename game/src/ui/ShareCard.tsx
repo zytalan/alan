@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { country, countryName, lifeCode, localUnitsReadable, pct, usd, wageYears, type LifeState, type Report } from "../engine";
+import { causePhrase, country, countryName, lifeCode, localUnitsReadable, pct, usd, wageYears, type Farewell, type LifeState, type Report } from "../engine";
 import { formatMult } from "./charts";
 import { currencySymbol, METALS, metalFor, type Metal } from "./Coin";
 import { binOf } from "./LifeStrip";
@@ -119,8 +119,8 @@ function drawStamp(ctx: CanvasRenderingContext2D, x: number, y: number, grade: s
   ctx.restore();
 }
 
-/** Draw the card for a finished life. */
-export async function drawCard(s: LifeState, r: Report): Promise<HTMLCanvasElement> {
+/** Wait a moment for the page's fonts, so the card is drawn in them. */
+async function loadFonts(): Promise<void> {
   try {
     await Promise.race([
       Promise.all([`64px ${DISPLAY}`, `600 16px ${BODY}`, `600 16px ${MONO}`].map((f) => document.fonts.load(f))),
@@ -129,6 +129,36 @@ export async function drawCard(s: LifeState, r: Report): Promise<HTMLCanvasEleme
   } catch {
     // system fonts will do
   }
+}
+
+/** Text split into lines no wider than `width`, `max` at most, the last cut short if it has to be. */
+function lines(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > width) {
+      if (out.length === max - 1) return [...out, `${line}…`];
+      out.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/** Text set in lines no wider than `width`, `max` at most; returns where the next line would go. */
+function wrap(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, step: number, max = 3): number {
+  for (const line of lines(ctx, text, width, max)) {
+    ctx.fillText(line, x, y);
+    y += step;
+  }
+  return y;
+}
+
+/** Draw the card for a finished life. */
+export async function drawCard(s: LifeState, r: Report): Promise<HTMLCanvasElement> {
+  await loadFonts();
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -212,14 +242,130 @@ export async function drawCard(s: LifeState, r: Report): Promise<HTMLCanvasEleme
   return canvas;
 }
 
+const STONE_HI = "#e3e8e5";
+const STONE_LO = "#b4beb8";
+const STONE_EDGE = "#97a39c";
+const CARVED = "#3b4842";
+const CARVED_LIGHT = "rgba(255, 255, 255, 0.55)";
+const GRASS = "#cddccc";
+
+/** Lettering cut into stone: a dark stroke with a light edge below it. */
+function carve(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void {
+  ctx.fillStyle = CARVED_LIGHT;
+  ctx.fillText(text, x + 1, y + 1.5);
+  ctx.fillStyle = CARVED;
+  ctx.fillText(text, x, y);
+}
+
+/** Draw the gravestone for a finished life. */
+export async function drawStone(s: LifeState, f: Farewell): Promise<HTMLCanvasElement> {
+  await loadFonts();
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = SHEET;
+  ctx.strokeStyle = RULE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(24, 24, W - 48, H - 48, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  // the stone, arched, standing in grass
+  const cx = 330;
+  const half = 205;
+  const top = 64;
+  const foot = 556;
+  ctx.fillStyle = GRASS;
+  ctx.beginPath();
+  ctx.roundRect(cx - half - 70, foot - 6, 2 * half + 140, 34, 17);
+  ctx.fill();
+  const g = ctx.createLinearGradient(cx - half, top, cx + half, foot);
+  g.addColorStop(0, STONE_HI);
+  g.addColorStop(1, STONE_LO);
+  ctx.fillStyle = g;
+  ctx.strokeStyle = STONE_EDGE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - half, foot);
+  ctx.lineTo(cx - half, top + half);
+  ctx.arc(cx, top + half, half, Math.PI, 0);
+  ctx.lineTo(cx + half, foot);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const inside = 2 * half - 70;
+  ctx.font = `600 13px ${BODY}`;
+  carve(ctx, "I N   M E M O R Y   O F", cx, 176);
+  fit(ctx, s.name, (px) => `${px}px ${DISPLAY}`, 46, 24, inside);
+  carve(ctx, s.name, cx, 236);
+  ctx.font = `28px ${DISPLAY}`;
+  carve(ctx, `${s.birthYear} – ${f.year}`, cx, 284);
+  ctx.font = `600 15px ${MONO}`;
+  carve(ctx, `${f.days.toLocaleString("en-US")} days`, cx, 316);
+  ctx.strokeStyle = CARVED;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 60, 346);
+  ctx.lineTo(cx + 60, 346);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.font = `italic 26px ${DISPLAY}`;
+  let y = 392;
+  for (const line of lines(ctx, f.epitaph, inside, 2)) {
+    carve(ctx, line, cx, y);
+    y += 34;
+  }
+  if (f.bond) {
+    ctx.font = `16px ${BODY}`;
+    for (const line of lines(ctx, f.bond, inside, 2)) {
+      carve(ctx, line, cx, y + 14);
+      y += 22;
+    }
+  }
+
+  // beside it, the life in brief, for whoever sees the card
+  const tx = 640;
+  const tw = W - tx - 72;
+  ctx.textAlign = "left";
+  ctx.fillStyle = MUTED;
+  ctx.font = `600 15px ${BODY}`;
+  ctx.fillText("LOT IN LIFE  ·  A LIFE REMEMBERED", tx, 96);
+  ctx.fillStyle = INK;
+  ctx.font = `30px ${DISPLAY}`;
+  y = wrap(ctx, `Born in ${countryName(s.birthCountry)} in ${s.birthYear}.`, tx, 150, tw, 38, 2);
+  const cause = causePhrase(f.cause);
+  y = wrap(ctx, `Died at ${f.age}${s.country !== s.birthCountry ? ` in ${countryName(s.country)}` : ""}, ${cause}.`, tx, y, tw, 38, 2);
+  ctx.fillStyle = INK_2;
+  ctx.font = `20px ${BODY}`;
+  y += 10;
+  if (f.outlivedShare != null) y = wrap(ctx, `${pct(f.outlivedShare)} of the people born in ${countryName(s.birthCountry)} that year lived longer.`, tx, y, tw, 28, 2);
+  if (f.peakUsd > 0) y = wrap(ctx, `Wealth at its peak, at ${f.peakAge}: ${usd(f.peakUsd)} in today's US dollars.`, tx, y + 6, tw, 28, 2);
+
+  const peak = s.history.reduce((b, h) => Math.max(b, wageYears(s, h.netWorth, h.year, h.country)), 0);
+  const symbol = localUnitsReadable(s) ? currencySymbol(country(s.country).cur) : "$";
+  drawCoin(ctx, W - 150, H - 150, 130, metalFor(peak), `${s.name} · ${countryName(s.birthCountry)} · ${s.birthYear}–${f.year} ·`, symbol, f.age);
+  ctx.fillStyle = MUTED;
+  ctx.font = `600 15px ${MONO}`;
+  ctx.fillText(`Life code ${lifeCode(s)}`, tx, H - 64);
+  return canvas;
+}
+
 interface Downloads {
   save(request: { filename: string; data: Blob }): Promise<{ status: string }>;
 }
 // Inside claude.ai the page is framed and saves go through the viewer; elsewhere a plain download works.
 const host = (window as unknown as { claude?: { use(name: "downloads"): Promise<Downloads | null> } }).claude;
 
-/** The card, a preview of it, and ways to keep it. */
-export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
+/** A drawn card, a preview of it, and ways to keep it. */
+function CanvasCard({ draw, filename, alt, title }: { draw: () => Promise<HTMLCanvasElement>; filename: string; alt: string; title: string }) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -228,7 +374,7 @@ export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
   useEffect(() => {
     let live = true;
     let made: string | null = null;
-    drawCard(s, r).then((canvas) =>
+    draw().then((canvas) =>
       canvas.toBlob((b) => {
         if (!live || !b) return;
         made = URL.createObjectURL(b);
@@ -241,9 +387,10 @@ export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
       live = false;
       if (made) URL.revokeObjectURL(made);
     };
-  }, [s, r]);
+    // the card is drawn once for the life it shows
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filename]);
 
-  const filename = `lot-in-life-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "life"}.png`;
   const file = blob ? new File([blob], filename, { type: "image/png" }) : null;
   const canShare = !host && !!file && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
 
@@ -274,7 +421,7 @@ export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
   const share = async () => {
     if (!file) return;
     try {
-      await navigator.share({ files: [file], title: `Lot in Life: ${r.name}` });
+      await navigator.share({ files: [file], title });
     } catch {
       // the viewer closed the sheet
     }
@@ -282,7 +429,7 @@ export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
 
   return (
     <div className="share-card">
-      {url ? <img src={url} width={W} height={H} alt={`The card for ${r.name}'s life: peak wealth ${usd(r.peakUsd)}, grade ${r.grade}`} /> : <div className="share-card-wait">Drawing your card…</div>}
+      {url ? <img src={url} width={W} height={H} alt={alt} /> : <div className="share-card-wait">Drawing your card…</div>}
       <div className="actions">
         <button className="btn small" onClick={save} disabled={!blob}>
           Save image
@@ -299,5 +446,31 @@ export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
         </p>
       )}
     </div>
+  );
+}
+
+const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "life";
+
+/** The statement card for a finished life. */
+export function ShareImage({ s, r }: { s: LifeState; r: Report }) {
+  return (
+    <CanvasCard
+      draw={() => drawCard(s, r)}
+      filename={`lot-in-life-${slug(r.name)}.png`}
+      alt={`The card for ${r.name}'s life: peak wealth ${usd(r.peakUsd)}, grade ${r.grade}`}
+      title={`Lot in Life: ${r.name}`}
+    />
+  );
+}
+
+/** The gravestone for a finished life. */
+export function StoneImage({ s, f }: { s: LifeState; f: Farewell }) {
+  return (
+    <CanvasCard
+      draw={() => drawStone(s, f)}
+      filename={`lot-in-life-${slug(s.name)}-stone.png`}
+      alt={`A gravestone for ${s.name}, ${s.birthYear}–${f.year}: ${f.epitaph}`}
+      title={`In memory of ${s.name}`}
+    />
   );
 }

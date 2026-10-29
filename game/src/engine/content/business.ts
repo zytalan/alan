@@ -30,12 +30,12 @@ export const BUSINESSES: BizDef[] = [
   {
     type: "trading", title: "Import/export trading", blurb: "Buy abroad, sell at home. Currency swings make or break you.",
     cost: 2.5, profit: 1.9, vol: 0.6, hazard: [0.2, 0.1], multiple: 2, minSkill: 35, stress: 7,
-    names: ["Silk Road Trading", "Harbour Imports", "Pacific Goods Co.", "Meridian Supply"],
+    names: ["Silk Road Trading", "Harbour Imports", "Pacific Goods Company", "Meridian Supply"],
   },
   {
     type: "workshop", title: "Workshop / small factory", blurb: "Capital heavy, but it can scale.",
     cost: 5, profit: 2.8, vol: 0.5, hazard: [0.15, 0.07], multiple: 3, minSkill: 40, stress: 7,
-    names: ["Precision Parts Ltd.", "Golden Thread Garments", "Ironworks & Sons", "Bright Plastics"],
+    names: ["Precision Parts Ltd", "Golden Thread Garments", "Ironworks & Sons", "Bright Plastics"],
   },
   {
     type: "agency", title: "Services firm", blurb: "Consulting, design, IT services. You are the product.",

@@ -341,7 +341,8 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
       const vol = k.eqVol + (Math.min(k.eqVol, k.dev > 0.75 ? 0.17 : 0.22) - k.eqVol) * fade;
       let lr = mu + 0.01 + vol * (rho * gy.z + Math.sqrt(1 - rho * rho) * r.fat(0, 1)) + 1.2 * (growth - gMu);
       if (r.chance(0.04)) lr -= r.range(0.15, 0.35);
-      eq = clamp(Math.exp(lr) * (1 + infl) - 1, -0.85, 4);
+      // the cap is on the real gain, so prices in a hyperinflation keep up with everything else
+      eq = clamp(Math.exp(lr) * (1 + infl) - 1, -0.85, Math.max(4, 2 * (1 + infl) - 1));
     }
     const dBond = synthMarkets ? null : market(iso, "bond", y);
     const bond = dBond != null ? dBond : clamp(dep + 0.012 + r.normal(0, 0.035) - 2.5 * (infl - prevInfl), -0.6, 1.5);
@@ -349,7 +350,7 @@ function build(iso: string, macroSeed: number, variant: number): EconPath {
     const house =
       dHouse != null
         ? dHouse
-        : clamp((1 + infl) * Math.exp(k.houseMu + k.houseVol * r.normal() + 0.6 * (growth - gMu)) - 1, -0.5, 3);
+        : clamp((1 + infl) * Math.exp(k.houseMu + k.houseVol * r.normal() + 0.6 * (growth - gMu)) - 1, -0.5, Math.max(3, 2 * (1 + infl) - 1));
     const rent = market(iso, "rent", y) ?? k.rentYield;
 
     const realEqRet = (1 + eq) / (1 + infl) - 1;

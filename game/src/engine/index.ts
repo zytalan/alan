@@ -27,3 +27,5 @@ export {
   coinDef, coinUsd, COINS, companyById, dividendYield, hasMarkets, indexLevel, indexName, isRealMonth, metalDef, metalUsd, METALS,
   monthLabel, monthOfT, priceOf, sectorLabel, setMarkets, tOf, yearOfT, yearStartT, MONTHS, type Instrument, type MarketsData,
 } from "./markets";
+export { farewell, type Farewell, type Moment, type YearTold } from "./ending";
+export { causePhrase } from "./mortality";
