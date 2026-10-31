@@ -791,6 +791,31 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 .legend i.swatch { width: 14px; height: 10px; border-radius: 2px; }
 .chart-wrap svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 
+/* ----------------------------------------------------------------- born the same year */
+.birth .born-with { grid-column: 1 / -1; }
+.born-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mates-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.birth .mates-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.mates-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.mates-list li.gone { opacity: 0.6; }
+.mate-flag { font-size: 16px; line-height: 1; }
+.mate-who { display: grid; gap: 1px; min-width: 0; }
+.mate-who b { font-weight: 600; font-size: 14px; }
+.mate-money { font-size: 13px; color: var(--ink-2); }
+.entry.peer { color: var(--ink-2); }
+.entry.peer::before { display: none; }
+.mates-end { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.mates-end li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.mates-end b { font-weight: 600; display: block; }
+.mate-story { color: var(--ink-2); }
+.peaks { display: grid; gap: 6px; }
+.peak-row { display: grid; grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 14px; }
+.peak-track { height: 12px; }
+.peak-bar { display: block; height: 100%; background: var(--rule-strong); border-radius: 0 4px 4px 0; }
+.peak-row.you .peak-bar { background: var(--series-1); }
+.peak-row.you .peak-name { font-weight: 600; }
+.peak-value { color: var(--ink-2); font-size: 13px; text-align: right; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

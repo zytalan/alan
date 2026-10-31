@@ -5,10 +5,11 @@ import {
   fmtIn, hasMarkets, homePrice, industryGrowth, INDUSTRY_NAMES, jobIndustry, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
   retirementAge, salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, signedPct, stageName, steady, toToday,
   TRADE_NAMES, tradeAsset, usd, W,
-  wageYears, type AssetKey, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
+  wageYears, type AssetKey, type Companion, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
 } from "../engine";
 import { Sparkline } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
+import { BornWith, useCompanionLines, useCompanions } from "./Companions";
 import { Counter } from "./Counter";
 import { DecisionCard, DecisionWaiting } from "./Decision";
 import { Desk } from "./Desk";
@@ -49,6 +50,7 @@ const LIFESTYLES: { id: Lifestyle; label: string; hint: string }[] = [
 
 export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: number; refresh: () => void; onDeath: () => void }) {
   const [speed, setSpeed] = useState<Speed>(0);
+  const cs = useCompanions(s);
   const [auto, setAuto] = useState(false);
   // a decision put aside to use the rest of the screen; the year waits for it
   const [aside, setAside] = useState<Decision | null>(null);
@@ -196,10 +198,11 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
       <main className="wrap board">
         <div className="ledger-col">
           <FrontPage s={s} />
-          <Ledger s={s} version={version} />
+          <Ledger s={s} version={version} cs={cs} />
         </div>
         <aside className="side">
           <Summary s={s} />
+          <BornWith s={s} cs={cs} year={s.year} />
           <Panels s={s} refresh={refresh} onDesk={openDesk} />
         </aside>
       </main>
@@ -210,7 +213,9 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
 
 // ------------------------------------------------------------------ ledger
 
-function Ledger({ s, version }: { s: LifeState; version: number }) {
+function Ledger({ s, version, cs }: { s: LifeState; version: number; cs: Companion[] | null }) {
+  // the four born with you, in the years you've lived so far
+  const peers = useCompanionLines(cs, s.birthYear, s.year);
   const years = useMemo(() => {
     const byYear = new Map<number, { age: number; entries: LifeState["log"] }>();
     for (const l of s.log) {
@@ -241,6 +246,12 @@ function Ledger({ s, version }: { s: LifeState; version: number }) {
             {y.entries.map((e, i) => (
               <div key={i} className={`entry ${e.tone}`}>
                 <span>{e.text}</span>
+              </div>
+            ))}
+            {(peers.get(y.year) ?? []).map((p, i) => (
+              <div key={`p${i}`} className="entry peer" title={`Born the same year as you, in ${p.where}`}>
+                <span aria-hidden="true">{p.flag}</span>
+                <span>{p.text}</span>
               </div>
             ))}
           </div>

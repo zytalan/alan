@@ -3,6 +3,7 @@ import {
   birthShares, country, countryIn, countryName, FIELD_NAMES, localUnitsReadable, memories, money, nearest, oneIn, pct,
   toToday, topPercent, usd, W, type LifeState,
 } from "../engine";
+import { BornWith, useCompanions } from "./Companions";
 import { Lottery } from "./Lottery";
 import { Rosette } from "./Rosette";
 
@@ -27,6 +28,7 @@ export function Birth({ s, onBegin }: { s: LifeState; onBegin: () => void }) {
   // the certificate prints once the draw has landed
   const [landed, setLanded] = useState(travel);
   const born = Math.round(birthShares(s.birthYear).total / 1e6);
+  const cs = useCompanions(s);
   const micro = `LOT IN LIFE · ${travel ? "ARRIVAL" : "CERTIFICATE OF BIRTH"} · ONE OF ${born} MILLION BORN IN ${s.birthYear} · `.repeat(4);
 
   return (
@@ -128,6 +130,7 @@ export function Birth({ s, onBegin }: { s: LifeState; onBegin: () => void }) {
           </button>
         </div>
       </article>
+      {landed && <BornWith s={s} cs={cs} year={travel ? s.year : s.birthYear} birth={!travel} />}
     </main>
   );
 }

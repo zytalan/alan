@@ -5,6 +5,7 @@ import {
 } from "../engine";
 import { formatMult, LifeChart, LuckBars } from "./charts";
 import { Coin, currencySymbol, METAL_LABEL, metalFor } from "./Coin";
+import { CompanionsEnd, useCompanions } from "./Companions";
 import { Farewell } from "./Farewell";
 import { LifeStrip } from "./LifeStrip";
 import { Peers } from "./Peers";
@@ -115,6 +116,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
   const [copied, setCopied] = useState(false);
   // an adult life gets its farewell before the statement, while the statement is worked out
   const told = useMemo(() => (s.death && s.death.age >= 18 ? farewell(s) : null), [s]);
+  const cs = useCompanions(s);
   const [phase, setPhase] = useState<"farewell" | "statement">(told ? "farewell" : "statement");
   const [card, setCard] = useState<"statement" | "stone">("statement");
 
@@ -132,7 +134,7 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s]);
 
-  if (phase === "farewell" && told) return <Farewell s={s} f={told} onDone={() => (setPhase("statement"), window.scrollTo(0, 0))} />;
+  if (phase === "farewell" && told) return <Farewell s={s} f={told} cs={cs} onDone={() => (setPhase("statement"), window.scrollTo(0, 0))} />;
 
   if (!report) {
     return (
@@ -272,6 +274,8 @@ export function End({ s, onAgain, onReplay, onReport }: { s: LifeState; onAgain:
       <LifeStrip s={s} title="Your life, year by year" />
 
       <Peers s={s} r={r} />
+
+      <CompanionsEnd s={s} cs={cs} />
 
       <section className="grid2">
         <div className="card">

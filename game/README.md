@@ -205,6 +205,14 @@ help with a first home. The statement adds up what you inherited, paid for care,
 each child gets in years of a typical wage. It also draws your life as a picture to
 save or share: the coin, your peak wealth, the grade, the strip and the life's code.
 
+Four other people are born the same year as you, by the same rules: one from each of the World
+Bank's income groups of countries (never your own), with families spread from poor to rich. You
+meet them on the birth certificate; while you live, a panel shows what each is doing and what they
+own, and their first jobs, weddings, first children, moves abroad, bankruptcies, retirements and
+deaths appear in your ledger the year they happen. Their lives come from your life's seed, so a
+replay meets the same four. When you die you learn which of them are still alive, and the statement
+tells each of their lives in a sentence beside your peaks.
+
 A death isn't over in a line. The screen says how and where the life ended, with its last
 year and how many of the people born in the same place and year lived longer (from the
 same life tables that decide when you die). Then the life passes in a dozen moments

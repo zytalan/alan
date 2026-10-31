@@ -160,6 +160,12 @@ export interface LogEntry {
   about?: string; // what the line tells of the year's money: "money" for the yearly line, a move's key ("ev:<title>") for a choice's outcome
 }
 
+/** How a year was spent: at school (the stage), at work (the job), running a business (its name), retired, and so on. */
+export interface Doing {
+  kind: "child" | "school" | "work" | "business" | "retired" | "idle";
+  label?: string;
+}
+
 export interface YearRecord {
   year: number;
   age: number;
@@ -183,6 +189,7 @@ export interface YearRecord {
    * Missing in a year you moved country, when the two amounts are in different currencies.
    */
   moves?: Record<string, number>;
+  doing?: Doing; // how the year was spent, for anyone looking back on it
 }
 
 export interface DecisionOption {

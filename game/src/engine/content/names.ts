@@ -117,6 +117,12 @@ function twoPart(pool: string[], u: number): string {
 }
 
 /** A newborn's name. Always two draws from `rng`, whatever the tradition. */
+/** The name someone is called by: the given name, which comes last where the family name goes first. */
+export function calledBy(full: string, group: string): string {
+  const parts = full.split(" ");
+  return G[group]?.familyFirst ? parts[parts.length - 1] : parts[0];
+}
+
 export function makeName(group: string, sex: Sex, rng: Rng): { full: string; given: string; family: string } {
   const g = G[group] ?? G.en;
   const pool = sex === "M" ? g.m : g.f;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import type { Farewell as Told, LifeState } from "../engine";
+import { companionAt, type Companion, type Farewell as Told, type LifeState } from "../engine";
 import { StoneImage } from "./ShareCard";
 
 type Step = "death" | "montage" | "funeral";
@@ -17,7 +17,18 @@ const dwell = (text: string) => Math.min(4200, Math.max(1800, 1400 + 28 * text.l
 const when = (year: number, age: number) => (age > 0 ? `${year} · age ${age}` : String(year));
 
 /** The end of a life, before its statement: how it ended, the life flashing past, and the goodbye. */
-export function Farewell({ s, f, onDone }: { s: LifeState; f: Told; onDone: () => void }) {
+/** How the four born with you stand on the day you die. */
+function peersLine(s: LifeState, cs: Companion[] | null, year: number): string | null {
+  if (!cs) return null;
+  const now = cs.map((c) => companionAt(s, c, year));
+  const alive = now.filter((n) => n.alive);
+  if (!alive.length) return "Of the four born the same year as you, none is still alive.";
+  if (alive.length === 4) return "All four born the same year as you are still alive.";
+  return `Of the four born the same year as you, ${alive.map((n) => n.first).join(" and ")} ${alive.length === 1 ? "is" : "are"} still alive.`;
+}
+
+export function Farewell({ s, f, cs, onDone }: { s: LifeState; f: Told; cs: Companion[] | null; onDone: () => void }) {
+  const peers = peersLine(s, cs, f.year);
   const [step, setStep] = useState<Step>("death");
   const head = useRef<HTMLHeadingElement>(null);
 
@@ -46,6 +57,7 @@ export function Farewell({ s, f, onDone }: { s: LifeState; f: Told; onDone: () =
             </div>
           )}
           {f.outlived && <p className="note" style={{ margin: 0 }}>{f.outlived}</p>}
+          {peers && <p className="note" style={{ margin: 0 }}>{peers}</p>}
           <div className="actions">
             <button className="btn primary" onClick={() => setStep(f.moments.length ? "montage" : "funeral")}>
               Look back

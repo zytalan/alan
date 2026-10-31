@@ -30,3 +30,5 @@ export {
 export { farewell, type Farewell, type Moment, type YearTold } from "./ending";
 export { causePhrase } from "./mortality";
 export { rankLabel, type Band, type Cohort, type RankPoint, type Standing, type StandingStat } from "./standing";
+export { companionAt, companionEvents, companions, companionStory, type Companion, type CompanionNow } from "./companions";
+export { firstName } from "./companions";

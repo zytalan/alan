@@ -1014,6 +1014,15 @@ function record(s: LifeState, income: number, spending: number, kept: number): v
     happiness: s.stats.happiness,
     country: s.country,
     moves,
+    doing: s.school
+      ? { kind: "school", label: s.school.kind }
+      : s.business
+        ? { kind: "business", label: s.business.name }
+        : s.job
+          ? { kind: "work", label: s.job.title }
+          : s.retired
+            ? { kind: "retired" }
+            : { kind: s.age < 15 ? "child" : "idle" },
   });
   // the year's money, in a line at the end of its entry
   const line = yearLine(s, s.history[s.history.length - 1], prevRec, ec(s).wage, ec(s, s.year - 1).wage, ec(s).infl);
