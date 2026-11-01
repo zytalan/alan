@@ -32,3 +32,4 @@ export { causePhrase } from "./mortality";
 export { rankLabel, type Band, type Cohort, type RankPoint, type Standing, type StandingStat } from "./standing";
 export { companionAt, companionEvents, companions, companionStory, type Companion, type CompanionNow } from "./companions";
 export { firstName } from "./companions";
+export { climateOf, sceneOf, stageOf, type Climate, type Extra, type Figure, type HomeKind, type Hour, type Outfit, type Prop, type Scene, type Stage, type Weather } from "./scene";

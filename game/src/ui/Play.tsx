@@ -14,6 +14,7 @@ import { Counter } from "./Counter";
 import { DecisionCard, DecisionWaiting } from "./Decision";
 import { Desk } from "./Desk";
 import { FrontPage } from "./FrontPage";
+import { LifeScene } from "./LifeScene";
 import { LifeStrip } from "./LifeStrip";
 
 /** Scroll the ledger to a year (or the nearest year it has a line for) and flash it. */
@@ -196,6 +197,7 @@ export function Play({ s, version, refresh, onDeath }: { s: LifeState; version: 
         <LifeStrip s={s} onPick={jumpToYear} />
       </div>
       <main className="wrap board">
+        <LifeScene s={s} version={version} />
         <div className="ledger-col">
           <FrontPage s={s} />
           <Ledger s={s} version={version} cs={cs} />

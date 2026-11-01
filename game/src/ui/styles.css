@@ -330,9 +330,15 @@ body::before {
 .toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
 
 .board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; padding-block: 20px 48px; align-items: start; }
+@media (min-width: 901px) {
+  .board > .life-scene { grid-column: 1; grid-row: 1; }
+  .board > .ledger-col { grid-column: 1; grid-row: 2; }
+  .board > .side { grid-column: 2; grid-row: 1 / span 2; }
+}
 @media (max-width: 900px) {
   .board { grid-template-columns: minmax(0, 1fr); }
   .side { order: -1; }
+  .board > .life-scene { order: -2; }
 }
 
 .ledger { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
@@ -627,6 +633,14 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 
 /* the year in review, as a front page */
 .ledger-col { display: grid; gap: 16px; min-width: 0; }
+/* the picture of the life this year, drawn in whole pixels */
+.life-scene { margin: 0; display: grid; gap: 6px; }
+.scene-box { min-width: 0; display: flex; justify-content: center; }
+.scene-box canvas {
+  display: block; max-width: 100%; image-rendering: pixelated; image-rendering: crisp-edges;
+  border-radius: 6px; border: 1px solid var(--rule); background: var(--sheet);
+}
+.life-scene figcaption { font-size: 13px; color: var(--muted); text-align: center; padding: 0 8px; }
 .front { background: var(--news); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 14px 16px 16px; display: grid; gap: 12px; }
 .fp-mast { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; border-bottom: 3px double var(--ink); padding-bottom: 6px; }
 .fp-mast b { font: 400 24px/1.1 var(--font-display); }

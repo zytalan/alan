@@ -187,6 +187,24 @@ jump to it in the ledger. Each New Year's Eve a front page sums up the year just
 its biggest story, what the stock market did month by month, and your own news. The
 statement ends with your best coin and the whole strip.
 
+Above the ledger, a pixel picture shows your life this year, and it changes as the life does.
+You grow from a baby in a pram to a grey-haired elder with a cane, and the day moves with you, from
+morning in childhood to evening light after 65 and dusk after 80. Your parents stand with you
+until you're 18, then your husband or wife and any children under 18. Your clothes come from your
+work: a school shirt, a nurse's coat, a hard hat, a suit, an apron at the stall, a cardigan when
+retired. The home is your family's until you leave, then one you rent or buy. It ranges from a hut
+with hens, maize and a cooking fire, through a simple house with washing on the line and a flat in
+a block, to a house with a fence, a big house with a garage, and a villa with a pool. A home you buy
+is drawn by what it cost then, so it stays the same until you move. It looks run-down while you're
+in debt, and if you run a business it stands beside the home. What you drive (nothing, a bike, a
+motorbike, a small car, a smart one) goes by your wealth over the last few years. The land follows
+your country, from palms to pines, sand or snow, and changes when you emigrate. Hard years (a lost
+job, a divorce, a crash, a death) are rainy, and big years bring bunting for a wedding, boxes for a
+move, confetti for a promotion or graduation, flowers for a death and toys while children are small.
+A sentence under the picture says the same thing in words for screen readers. The picture is drawn
+in code (src/ui/pixel), and `npx tsx scripts/storyboard.ts out.png seed 106` draws one life at
+twenty ages to look at.
+
 Under your net worth, a short list shows what moved it last year, biggest causes first:
 what you kept from income, interest, each investment's return, your home's value, and
 decisions by name (a wedding, a hospital bill), then what rising prices took. The parts
@@ -346,8 +364,9 @@ src/engine/ the simulation (no UI): economy paths, mortality, careers, businesse
             markets.ts (monthly prices, companies) and desk.ts (the trading account)
 src/ui/     React screens: start, birth lottery and certificate, ledger, decisions,
             trading desk, farewell, statement; the coin, life strip, front page and
-            the shareable cards
-scripts/    simulate.ts and trace.ts for balancing, geo.mjs for the map,
+            the shareable cards; pixel/ paints the picture of the year (scene.ts in
+            the engine decides what it shows)
+scripts/    simulate.ts and trace.ts for balancing, storyboard.ts for the pictures, geo.mjs for the map,
             artifact-page.mjs for publishing
 tests/      vitest suite
 ```
