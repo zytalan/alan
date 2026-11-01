@@ -126,6 +126,39 @@ computer science graduate looking in technology finds four openings in 1998 and 
 none in 2009. At 40, a US graduate born in 1975 earns, in typical wages: medicine 5.1,
 computer science 4.5, law 3.9, engineering 3.2, business 3.2, education 1.9, arts 1.9.
 
+## Ways to invest
+
+The Invest, Property and Business tabs hold everything you can put money into in a year.
+Buying spends your cash first, then sells your other savings.
+
+- **Funds:** cash, government bonds, and the local and global stock indexes as before, plus
+  corporate bonds, inflation-linked bonds, US Treasuries and a property fund. Each fund is offered
+  only where and when it existed. Corporate bonds earn government bonds plus a credit spread, less
+  the defaults that bunch in slumps. Inflation-linked bonds pay what prices rise by plus a real
+  yield, and appear in each country the year its government first sold them (Britain 1981, the US
+  1997). US Treasuries are American government bonds in dollars, for anyone who can buy abroad. The
+  property fund moves partly with the stock market and partly with homes and their rents.
+- **Fixed-rate government bonds:** 2, 5 or 10 years at today's yield (the deposit rate, a term
+  premium, and part of any gap to inflation). They pay interest every year and the face value at
+  the end. Selling early fetches today's price, which falls when rates rise. A government that
+  can't pay makes holders take less, in some currency crises, hyperinflations and wars.
+- **Companies:** three listed companies each year, each with its industry, a pitch, its dividend,
+  what it costs per unit of profit and last year's move. Dividends are paid in cash. Over ten years
+  about three in ten beat the index, one in five loses half, and the cheaper ones do a little
+  better.
+- **Private deals:** with good contacts, a startup raises a round from friends. Most fail, but a few
+  pay many times over, enough to come out ahead on average. The well off can lock money in a
+  private equity fund for ten years.
+- **Businesses:** two a year come up for sale, priced on last year's profit. Run one yourself and it
+  replaces your job, or hire a manager, who takes a wage and runs it as an average owner would
+  while you keep working. A business that has lasted five years fails less often than a new one.
+  Someone you know may ask you to become a partner: a share of the profit each year, then a buyout,
+  unless the business fails first.
+- **Property:** beside a home to live in, you can buy a small flat (more rent for its price), a
+  house, a shop or office (higher rent, and a third stand empty in a recession), farmland (low rent,
+  steady value) or a holiday home (no rent, upkeep every year, a little happier). Each comes with a
+  mortgage if lenders here offer one.
+
 ## The trading desk
 
 From 18, with a bank account and a stock market to reach, you can open a brokerage
@@ -358,7 +391,7 @@ and Eritrea are missing because the World Bank has no usable economic series for
 ```
 pipeline/   fetch.py, build.py — raw downloads → public/data/world.json and markets.json
             (monthly history, loaded the first time you open the desk)
-src/engine/ the simulation (no UI): economy paths, mortality, careers, businesses,
+src/engine/ the simulation (no UI): economy paths, mortality, careers, businesses, investments (invest.ts),
             events, the yearly loop, automatic players, the end-of-life report and
             the life told at its end (ending.ts);
             markets.ts (monthly prices, companies) and desk.ts (the trading account)

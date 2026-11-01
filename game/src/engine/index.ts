@@ -2,7 +2,7 @@ export * from "./types";
 export { setWorld, hasWorld, country, countryIn, countryIsos, countryName, flagEmoji, nearest, world, type WorldData } from "./world";
 export { econ, toIntl2021, intlToUsd } from "./macro";
 export {
-  advance, birthShare, birthShares, payRank, buyHome, buyListedStock, careerAction, careerOptions, choose, closeBusiness, listBusiness,
+  advance, birthShare, birthShares, payRank, buyHome, buyListedStock, buyWithSavings, careerAction, careerOptions, choose, closeBusiness, listBusiness,
   repayDebt, sellHolding, sellHome, setAllocation, setLifestyle, stockMarket, tradeAsset, ASSET_LABEL, type CareerAction,
 } from "./life";
 export { lifeCode, newGame, parseLifeCode, steady, typical, runLife } from "./policy";
@@ -28,6 +28,11 @@ export {
   monthLabel, monthOfT, priceOf, sectorLabel, setMarkets, tOf, yearOfT, yearStartT, MONTHS, type Instrument, type MarketsData,
 } from "./markets";
 export { farewell, type Farewell, type Moment, type YearTold } from "./ending";
+export {
+  BOND_TERMS, bondYield, businessesForSale, buyBond, buyBusiness, buyListing, buyPropertyOf, canBuyBonds, joinDeal, lastYearReturns, listings, managedProfit,
+  partnerDeal, privateFund, PROPERTY_USES, propertyQuote, sellBond, setManaged, startupDeal, upgradeLife, type BizForSale, type Deal, type Listing,
+} from "./invest";
+export { bondLotValue, linkersFrom } from "./ops";
 export { causePhrase } from "./mortality";
 export { rankLabel, type Band, type Cohort, type RankPoint, type Standing, type StandingStat } from "./standing";
 export { companionAt, companionEvents, companions, companionStory, type Companion, type CompanionNow } from "./companions";

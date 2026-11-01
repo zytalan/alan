@@ -122,8 +122,13 @@ export function holdingsTotal(s: LifeState): number {
   return ASSET_KEYS.reduce((a, k) => a + s.holdings[k], 0);
 }
 
+/** Fixed-rate bonds you hold, at what they'd sell for today. */
+export function bondLotValue(s: LifeState): number {
+  return (s.bondLots ?? []).reduce((a, b) => a + b.value, 0);
+}
+
 export function liquid(s: LifeState): number {
-  return holdingsTotal(s) + s.cashHome + stockValue(s, true);
+  return holdingsTotal(s) + s.cashHome + stockValue(s, true) + bondLotValue(s);
 }
 
 export function propertyValue(s: LifeState): number {
@@ -220,13 +225,31 @@ export function careAid(s: LifeState): number {
   return d >= 0.75 ? 0.8 : d >= 0.45 ? 0.3 : 0;
 }
 
+/** When a country first sold bonds that rise with its prices (retail could buy them). */
+const LINKERS_FROM: Record<string, number> = {
+  ISR: 1955, ISL: 1955, CHL: 1967, GBR: 1981, AUS: 1985, CAN: 1991, SWE: 1994, NZL: 1995, MEX: 1996, USA: 1997, GRC: 1997,
+  FRA: 1998, COL: 1999, BRA: 2000, ZAF: 2000, ARG: 2002, ITA: 2003, JPN: 2004, POL: 2004, DEU: 2006, TUR: 2007, KOR: 2007,
+  THA: 2011, ESP: 2014, RUS: 2015,
+};
+
+export function linkersFrom(iso: string): number | null {
+  return LINKERS_FROM[iso] ?? null;
+}
+
 export function availableAssets(s: LifeState): AssetKey[] {
   const a = s.access;
   const out: AssetKey[] = ["cash", "usd"];
-  if (goldRule(s.country, s.year, 7)?.kind !== "closed") out.push("gold"); // jewellery or coins still count
   if (a.bank) out.push("bonds");
+  // a market for company debt comes with a stock market
+  if (a.localEq) out.push("corp");
+  const lk = linkersFrom(s.country);
+  if (a.bank && lk != null && s.year >= lk) out.push("linkers");
+  if (a.globalEq && s.country !== "USA") out.push("ust");
   if (a.localEq) out.push("localEq");
   if (a.globalEq) out.push("globalEq");
+  // listed property funds: American REITs from the 1960s, most other markets from the 1990s
+  if (a.localEq && (s.country === "USA" ? s.year >= 1965 : s.year >= 1995 && dev(s) >= 0.45)) out.push("reit");
+  if (goldRule(s.country, s.year, 7)?.kind !== "closed") out.push("gold"); // jewellery or coins still count
   if (a.crypto) out.push("crypto");
   return out;
 }
@@ -237,7 +260,7 @@ export function usdPremium(s: LifeState): number {
   return c === "closed" ? 0.15 : c === "quota" ? 0.04 : 0.01;
 }
 
-const BUY_COST: Partial<Record<AssetKey, number>> = { gold: 0.02, crypto: 0.01, globalEq: 0.002, localEq: 0.002 };
+const BUY_COST: Partial<Record<AssetKey, number>> = { gold: 0.02, crypto: 0.01, globalEq: 0.002, localEq: 0.002, corp: 0.002, linkers: 0.001, ust: 0.002, reit: 0.003 };
 
 export function normalizedAllocation(s: LifeState): Allocation {
   const allowed = new Set(availableAssets(s));
@@ -301,7 +324,7 @@ function buyNet(s: LifeState, k: AssetKey, amount: number): number {
   return amount * (1 - cost);
 }
 
-const SELL_ORDER: AssetKey[] = ["cash", "usd", "bonds", "gold", "globalEq", "localEq", "crypto"];
+const SELL_ORDER: AssetKey[] = ["cash", "usd", "bonds", "linkers", "ust", "corp", "gold", "reit", "globalEq", "localEq", "crypto"];
 
 /** Sell liquid assets to raise cash. Returns the amount raised. */
 export function raiseCash(s: LifeState, amount: number): number {
@@ -327,6 +350,17 @@ export function raiseCash(s: LifeState, amount: number): number {
     }
     s.stocks = s.stocks.filter((st) => st.alive);
   }
+  // fixed-rate bonds go before the trading account, at what they'd fetch today
+  for (const b of [...(s.bondLots ?? [])].sort((x, y) => x.matures - y.matures)) {
+    if (need <= 0) break;
+    const take = Math.min(b.value, need);
+    const k = take / b.value;
+    b.value -= take;
+    b.face *= 1 - k;
+    b.cost *= 1 - k;
+    need -= take;
+  }
+  if (s.bondLots) s.bondLots = s.bondLots.filter((b) => b.value > 1e-9);
   if (need > 0 && s.desk && s.desk.cash > 0) {
     // bills come out of idle cash in the trading account before anyone lends you money
     const take = Math.min(s.desk.cash, need);
@@ -817,7 +851,7 @@ export function sellProperty(s: LifeState, id: string, discount = 0): number {
 
 export function makeStock(s: LifeState, r: Rng, startup = false): Stock {
   const idea = r.pick(STOCK_IDEAS);
-  const rocket = r.chance(startup ? 0.05 : 0.04);
+  const rocket = r.chance(startup ? 0.06 : 0.04);
   return {
     id: `st${s.year}-${Math.floor(r.next() * 1e6)}`,
     name: startup ? `${r.pick(["Loop", "Kite", "Grid", "Nim", "Quant", "Orb", "Tide"])}${r.pick(["ly", "wise", "io", "stack", "labs"])}` : r.pick(idea.names),
@@ -826,12 +860,13 @@ export function makeStock(s: LifeState, r: Rng, startup = false): Stock {
     value: 0,
     cost: 0,
     beta: startup ? 0.5 : r.range(0.7, 1.5),
-    // most single stocks lag the index; a handful carry it for a few years
-    drift: startup ? -0.08 : r.range(-0.06, 0.01),
-    boost: rocket ? r.range(0.25, 0.6) : undefined,
+    // most single stocks lag the index; a handful carry it for a few years. Most startups die, and the
+    // survivors' few big winners pay for the rest
+    drift: startup ? 0.06 : r.range(-0.06, 0.01),
+    boost: rocket ? r.range(startup ? 0.3 : 0.25, startup ? 0.7 : 0.6) : undefined,
     boostUntil: rocket ? s.year + r.int(3, 8) : undefined,
-    vol: startup ? 0.8 : r.range(0.25, 0.45),
-    hazard: startup ? 0.16 : r.range(0.01, 0.04),
+    vol: startup ? 0.75 : r.range(0.25, 0.45),
+    hazard: startup ? 0.09 : r.range(0.01, 0.04),
     alive: true,
     bought: s.year,
     illiquid: startup || undefined,

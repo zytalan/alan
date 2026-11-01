@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  advance, ASSET_KEYS, ASSET_LABEL, availableAssets, BIZ, buyHome, careerAction, careerOptions, choose, closeBusiness,
-  consumerRate, country, countryIn, countryName, creditLimit, deskAccess, deskValue, ec, econ, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
-  fmtIn, hasMarkets, homePrice, industryGrowth, INDUSTRY_NAMES, jobIndustry, liquid, listBusiness, localUnitsReadable, mortgageQuote, netWorth, payRank, pct, repayDebt,
-  retirementAge, salary, sellHolding, sellHome, setAllocation, setLifestyle, setMarkets, signedPct, stageName, steady, toToday,
-  TRADE_NAMES, tradeAsset, usd, W,
+  advance, ASSET_KEYS, ASSET_LABEL, availableAssets, bondLotValue, careerAction, careerOptions, choose,
+  consumerRate, country, countryIn, countryName, creditLimit, deskAccess, deskValue, econ, ensureDesk, FIELD_NAMES, flagEmoji, fmt,
+  fmtIn, hasMarkets, industryGrowth, INDUSTRY_NAMES, jobIndustry, liquid, localUnitsReadable, netWorth, payRank, pct, repayDebt,
+  retirementAge, salary, setAllocation, setLifestyle, setMarkets, signedPct, steady, stockValue, toToday,
+  TRADE_NAMES, usd, W,
   wageYears, type AssetKey, type Companion, type Decision, type Lifestyle, type LifeState, type MarketsData, type YearRecord,
 } from "../engine";
 import { Sparkline } from "./charts";
@@ -14,6 +14,7 @@ import { Counter } from "./Counter";
 import { DecisionCard, DecisionWaiting } from "./Decision";
 import { Desk } from "./Desk";
 import { FrontPage } from "./FrontPage";
+import { BusinessPanel, InvestPanel, PropertyPanel } from "./Invest";
 import { LifeScene } from "./LifeScene";
 import { LifeStrip } from "./LifeStrip";
 
@@ -356,12 +357,18 @@ const MOVE_LABEL: Record<string, string> = {
   interest: "Interest on debts",
   cash: "Interest on savings",
   usd: "US dollars",
-  bonds: "Bonds",
+  bonds: "Government bonds",
+  corp: "Corporate bonds",
+  linkers: "Inflation-linked bonds",
+  ust: "US Treasury bonds",
+  fixed: "Fixed-rate bonds",
   localEq: "Local stock index",
   globalEq: "Global stock index",
+  reit: "Property fund",
   gold: "Gold",
   crypto: "Bitcoin",
   picks: "Shares you picked",
+  stakes: "Partner stakes",
   desk: "Trading account",
   home: "Home and property value",
   business: "Your business",
@@ -459,7 +466,7 @@ function Panels({ s, refresh, onDesk }: { s: LifeState; refresh: () => void; onD
       ) : tab === "invest" ? (
         <InvestPanel s={s} refresh={refresh} onDesk={onDesk} />
       ) : tab === "home" ? (
-        <HomePanel s={s} refresh={refresh} />
+        <PropertyPanel s={s} refresh={refresh} />
       ) : (
         <BusinessPanel s={s} refresh={refresh} />
       )}
@@ -527,9 +534,11 @@ function MoneyPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
             <Row key={k} label={ASSET_LABEL[k]} value={fmt(s, s.holdings[k])} share={total ? s.holdings[k] / total : 0} />
           ))}
           {s.cashHome > 0.5 && <Row label="Cash at home" value={fmt(s, s.cashHome)} share={total ? s.cashHome / total : 0} />}
+          {bondLotValue(s) > 0.5 && <Row label="Fixed-rate bonds" value={fmt(s, bondLotValue(s))} />}
+          {stockValue(s) > 0.5 && <Row label="Shares and stakes" value={fmt(s, stockValue(s))} />}
           {s.desk && deskValue(s) > 0.5 && <Row label="Trading account" value={fmt(s, deskValue(s))} />}
           {s.frozen && <Row label={`Frozen until ${s.frozen.until}`} value={fmt(s, s.frozen.amount)} />}
-          {total <= 0.5 && !s.frozen && <span className="muted">Nothing saved yet.</span>}
+          {total + bondLotValue(s) + stockValue(s) <= 0.5 && !s.frozen && <span className="muted">Nothing saved yet.</span>}
         </div>
       </div>
       <div>
@@ -658,192 +667,6 @@ function WorkPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
         </div>
         <p className="note">One career move per year. {opts.find((o) => o.disabled)?.disabled ? "" : ""}</p>
       </div>
-    </div>
-  );
-}
-
-function InvestPanel({ s, refresh, onDesk }: { s: LifeState; refresh: () => void; onDesk: () => void }) {
-  const allowed = availableAssets(s).filter((k) => k !== "cash");
-  const cash = s.holdings.cash + s.cashHome;
-  const access = deskAccess(s);
-  const prev = ec(s, s.year - 1);
-  const [amountPct, setAmountPct] = useState(10);
-  const amt = (liquid(s) * amountPct) / 100;
-  return (
-    <div className="list">
-      <div className="field">
-        <label id="amt">Trade size: {amountPct}% of your savings ({fmt(s, amt)})</label>
-        <div className="seg" role="group" aria-labelledby="amt">
-          {[5, 10, 25, 50].map((p) => (
-            <button key={p} aria-pressed={amountPct === p} onClick={() => setAmountPct(p)}>
-              {p}%
-            </button>
-          ))}
-        </div>
-      </div>
-      <div>
-        <span className="eyebrow">Buy and sell</span>
-        {allowed.map((k) => (
-          <div key={k} className="item">
-            <span className="t">{ASSET_LABEL[k]}</span>
-            <span className="actions">
-              <button className="btn small" disabled={cash < 1 || amt < 1} onClick={() => (tradeAsset(s, k, Math.min(cash, amt)), refresh())}>
-                Buy
-              </button>
-              <button className="btn small ghost" disabled={s.holdings[k] < 1} onClick={() => (tradeAsset(s, k, -s.holdings[k]), refresh())}>
-                Sell all
-              </button>
-            </span>
-            <span className="d">
-              You hold {fmt(s, s.holdings[k])}
-              {k === "crypto" && prev.btc ? ` · 1 BTC was ${usd(prev.btc)} at the end of ${s.year - 1}` : ""}
-              {k === "localEq" ? ` · last year ${pct((1 + prev.eq) / (1 + prev.infl) - 1)} after inflation` : ""}
-            </span>
-          </div>
-        ))}
-        {allowed.length === 0 && <p className="note">Nothing to invest in yet.</p>}
-      </div>
-      <div className="item">
-        <span className="t">Trading desk</span>
-        <button className="btn small" disabled={!access.ok} title={access.reason} onClick={onDesk}>
-          Open
-        </button>
-        <span className="d">
-          {access.ok
-            ? `Index funds and listed companies, month by month.${s.desk ? ` Your account: ${fmt(s, deskValue(s))}.` : ""}`
-            : `${access.reason}.`}
-        </span>
-      </div>
-      {s.stocks.length > 0 && (
-        <div>
-          <span className="eyebrow">Your stocks and stakes</span>
-          {s.stocks.map((st) => (
-            <div key={st.id} className="item">
-              <span className="t">{st.name}</span>
-              {st.illiquid ? (
-                <span className="note">Locked until an exit</span>
-              ) : (
-                <button className="btn small ghost" onClick={() => (sellHolding(s, st.id, 1), refresh())}>
-                  Sell
-                </button>
-              )}
-              <span className="d">
-                {fmt(s, st.value)} · {st.cost > 0 ? `${st.value >= st.cost ? "+" : "−"}${pct(Math.abs(st.value / st.cost - 1))}` : ""} since {st.bought}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HomePanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
-  const price = homePrice(s);
-  const q = mortgageQuote(s, price);
-  const hasHome = s.properties.some((p) => p.kind === "home");
-  const e = ec(s);
-  return (
-    <div className="list">
-      <div className="kv">
-        <span>A typical home here</span>
-        <span className="num">{fmt(s, price)}</span>
-        <span>Price ÷ typical wage</span>
-        <span className="num">{(price / W(s)).toFixed(1)} years</span>
-        <span>Mortgage</span>
-        <span className="num">{q.loan > 0 ? `${fmt(s, q.down)} down · ${fmt(s, q.payment)}/yr` : "Not available — cash only"}</span>
-        <span>Rent it out for</span>
-        <span className="num">{fmt(s, price * e.rentYield)}/yr gross</span>
-      </div>
-      <div className="actions">
-        <button className="btn small" disabled={!q.ok || hasHome} title={hasHome ? "You already own a home" : q.reason} onClick={() => (buyHome(s, "home"), refresh())}>
-          Buy a home to live in
-        </button>
-        <button className="btn small" disabled={!q.ok} title={q.reason} onClick={() => (buyHome(s, "rental"), refresh())}>
-          Buy one to rent out
-        </button>
-      </div>
-      {!q.ok && q.reason && <p className="note">{q.reason}.</p>}
-      {s.properties.map((p) => (
-        <div key={p.id} className="item">
-          <span className="t">{p.kind === "home" ? "Your home" : "Rental property"}</span>
-          <button className="btn small ghost" onClick={() => (sellHome(s, p.id), refresh())}>
-            Sell
-          </button>
-          <span className="d">
-            Worth {fmt(s, p.value)} · bought {p.bought} for {fmt(s, p.price)}
-            {p.mortgage > 0.5 ? ` · owe ${fmt(s, p.mortgage)}` : " · paid off"}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BusinessPanel({ s, refresh }: { s: LifeState; refresh: () => void }) {
-  const b = s.business;
-  const start = careerOptions(s).find((o) => o.id === "business");
-  return (
-    <div className="list">
-      {b ? (
-        <>
-          <div className="kv">
-            <span>Business</span>
-            <span>
-              {b.name} · {BIZ[b.type].title}
-            </span>
-            <span>Founded</span>
-            <span className="num">{b.founded}</span>
-            {b.type === "tech" ? (
-              <>
-                <span>Stage</span>
-                <span>{stageName(b.stage)}</span>
-                <span>You own</span>
-                <span className="num">{pct(b.equity)}</span>
-              </>
-            ) : (
-              <>
-                <span>Size</span>
-                <span className="num">{b.scale.toFixed(1)}× where you started</span>
-              </>
-            )}
-            <span>Last year's profit</span>
-            <span className="num">{fmt(s, b.profit)}</span>
-            <span>Worth to a buyer</span>
-            <span className="num">{fmt(s, b.valuation)}</span>
-          </div>
-          <div className="actions">
-            <button className="btn small" disabled={b.forSale} onClick={() => (listBusiness(s), refresh())}>
-              {b.forSale ? "Up for sale" : "Put it up for sale"}
-            </button>
-            <button className="btn small ghost" onClick={() => (closeBusiness(s), refresh())}>
-              Close it
-            </button>
-          </div>
-          <p className="note">Buyers make offers; a listed business draws them faster.</p>
-        </>
-      ) : (
-        <>
-          <p className="note" style={{ margin: 0 }}>
-            Street stall, shop, trading company, workshop, services firm or a tech startup. Most small businesses close within five
-            years; the ones that survive can be sold.
-          </p>
-          <div className="actions">
-            <button className="btn small" disabled={!!start?.disabled} title={start?.disabled} onClick={() => (careerAction(s, "business"), refresh())}>
-              Start a business
-            </button>
-          </div>
-        </>
-      )}
-      {s.pastBusinesses.map((p, i) => (
-        <div key={i} className="item">
-          <span className="t">{p.name}</span>
-          <span className="num">{p.value > 0 ? fmt(s, p.value) : ""}</span>
-          <span className="d">
-            {BIZ[p.type].title} · {p.outcome} in {p.year}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

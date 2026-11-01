@@ -8,11 +8,11 @@ export type Field = "cs" | "stem" | "business" | "medicine" | "law" | "education
 // what vocational training trains you for
 export type Trade = "nursing" | "electrical" | "it" | "hospitality" | "mechanics" | "beauty" | "care" | "design" | "flying";
 export type Lifestyle = "frugal" | "modest" | "comfortable" | "lavish";
-export type AssetKey = "cash" | "usd" | "bonds" | "localEq" | "globalEq" | "gold" | "crypto";
+export type AssetKey = "cash" | "usd" | "bonds" | "corp" | "linkers" | "ust" | "localEq" | "globalEq" | "reit" | "gold" | "crypto";
 export type Allocation = Record<AssetKey, number>;
 export type Holdings = Record<AssetKey, number>;
 
-export const ASSET_KEYS: AssetKey[] = ["cash", "usd", "bonds", "localEq", "globalEq", "gold", "crypto"];
+export const ASSET_KEYS: AssetKey[] = ["cash", "usd", "bonds", "corp", "linkers", "ust", "localEq", "globalEq", "reit", "gold", "crypto"];
 export const EDU_ORDER: Edu[] = ["none", "primary", "secondary", "vocational", "bachelor", "master", "doctorate"];
 
 export interface Setup {
@@ -60,9 +60,26 @@ export interface Stock {
   bought: number;
   illiquid?: boolean; // private startup stakes can't be sold
   exitYear?: number;
+  kind?: "listed" | "startup" | "pe" | "stake"; // unset: listed, or a startup if illiquid
+  payout?: number; // share of its value paid out in cash each year: dividends, or a partner's cut of profit
+  peRatio?: number; // what a listed company cost for each unit of yearly profit when you bought it
   boost?: number; // extra drift while the company is a breakout winner
   boostUntil?: number;
 }
+
+/** A fixed-rate government bond held to maturity: a coupon every year, the face value back at the end. */
+export interface BondLot {
+  id: string;
+  years: number;
+  face: number;
+  rate: number;
+  bought: number;
+  matures: number; // the year of the last coupon, when the face value is repaid
+  value: number; // what it would sell for now
+  cost: number;
+}
+
+export type PropUse = "house" | "flat" | "shop" | "farm" | "holiday";
 
 export interface Property {
   id: string;
@@ -74,6 +91,7 @@ export interface Property {
   payment: number;
   bought: number;
   personal?: boolean; // a holiday home you keep for yourself: no rent comes in
+  use?: PropUse; // what a property that isn't your home is: unset means a house to let
 }
 
 export type BizType = "stall" | "shop" | "trading" | "workshop" | "agency" | "tech";
@@ -90,6 +108,8 @@ export interface Business {
   invested: number;
   stage: number; // tech: 0 idea .. 4 growth
   forSale: boolean;
+  managed?: boolean; // run by a hired manager while you keep your own work
+  bought?: number; // the year you bought it, if you didn't found it
 }
 
 export interface Partner {
@@ -330,6 +350,7 @@ export interface LifeState {
   holdings: Holdings;
   cashHome: number; // cash kept outside the banking system
   stocks: Stock[];
+  bondLots?: BondLot[];
   desk: DeskState | null;
   properties: Property[];
   consumerDebt: number;

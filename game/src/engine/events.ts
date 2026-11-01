@@ -10,6 +10,7 @@ import { aTitle, lc, pct, signedPct } from "./format";
 import { PONZI_WAVES } from "./history";
 import { AREA_OF, AREAS, industryGrowth, INDUSTRY_NAMES, recentGrowth, type Area, type Industry } from "./labour";
 import { econ, type YearEcon } from "./macro";
+import { rentShare, standsEmpty } from "./invest";
 import { referenceHealth } from "./mortality";
 import { liquidateDesk, shrinkDesk } from "./desk";
 import {
@@ -199,8 +200,10 @@ export function moveCountry(s: LifeState, dest: string, lossShare = 0): void {
     endBusiness(s, "sold", Math.max(0, v));
   }
   const keep = 1 - lossShare;
-  for (const k of ["cash", "bonds", "localEq"] as AssetKey[]) s.holdings[k] *= conv * keep;
-  for (const k of ["usd", "globalEq", "gold", "crypto"] as AssetKey[]) s.holdings[k] *= conv; // dollar assets travel
+  for (const b of s.bondLots ?? []) s.holdings.cash += b.value * 0.99;
+  s.bondLots = [];
+  for (const k of ["cash", "bonds", "corp", "linkers", "localEq", "reit"] as AssetKey[]) s.holdings[k] *= conv * keep;
+  for (const k of ["usd", "ust", "globalEq", "gold", "crypto"] as AssetKey[]) s.holdings[k] *= conv; // dollar assets travel
   s.cashHome *= conv * keep;
   s.consumerDebt *= conv;
   s.studentDebt *= conv;
@@ -208,9 +211,9 @@ export function moveCountry(s: LifeState, dest: string, lossShare = 0): void {
     st.value *= conv * keep;
     st.cost *= conv;
   }
-  if (s.holdings.localEq > 0) {
-    s.holdings.cash += s.holdings.localEq;
-    s.holdings.localEq = 0;
+  for (const k of ["localEq", "corp", "linkers", "reit"] as AssetKey[]) {
+    s.holdings.cash += s.holdings[k];
+    s.holdings[k] = 0;
   }
   s.country = dest;
   s.flags.hpl = undefined as unknown as number;
@@ -3192,7 +3195,10 @@ const DEFS: EventDef[] = [
     },
     resolve: (s, c, p, opt) => {
       if (opt === "land") {
-        if (buyProperty(s, "rental", Number(p.price))) log(s, "You buy a plot of farmland.", "milestone");
+        if (buyProperty(s, "rental", Number(p.price))) {
+          s.properties[s.properties.length - 1].use = "farm";
+          log(s, "You buy a plot of farmland.", "milestone");
+        }
       } else if (opt === "animals") {
         if (s.cashHome > 0) {
           s.holdings.cash += s.cashHome;
@@ -3270,6 +3276,7 @@ const DEFS: EventDef[] = [
       if (opt === "no" || !buyProperty(s, "rental", Number(p.price))) return;
       if (opt === "keep") {
         s.properties[s.properties.length - 1].personal = true;
+        s.properties[s.properties.length - 1].use = "holiday";
         commit(s, { key: "cottage", label: "Upkeep on the cottage", wage: -0.04, until: s.year + 30, happiness: 1 });
       } else watchRental(s, c.r);
       log(s, opt === "keep" ? "You buy a holiday cottage." : "You buy a cottage to let.", "milestone");
@@ -4588,7 +4595,12 @@ function fmtUsd(x: number): string {
 
 export function rentIncome(s: LifeState): number {
   const e = ec(s);
-  return s.properties.filter((p) => p.kind === "rental" && !p.personal).reduce((a, p) => a + p.value * e.rentYield * 0.7, 0);
+  let total = 0;
+  for (const p of s.properties) {
+    if (p.kind !== "rental" || p.personal || p.use === "holiday") continue;
+    total += p.value * rentShare(p.use, e, p.use === "shop" && standsEmpty(s, p.id, e)) * 0.7;
+  }
+  return total;
 }
 
 export function spendingEstimate(s: LifeState): number {
@@ -4619,6 +4631,11 @@ export function giveAway(s: LifeState, share: number): void {
   for (const k of ASSET_KEYS) s.holdings[k] *= 1 - share;
   s.cashHome *= 1 - share;
   for (const st of s.stocks) st.value *= 1 - share;
+  for (const b of s.bondLots ?? []) {
+    b.value *= 1 - share;
+    b.face *= 1 - share;
+    b.cost *= 1 - share;
+  }
   for (const p of [...s.properties]) {
     const equity = p.value - p.mortgage;
     s.properties = s.properties.filter((x) => x !== p);

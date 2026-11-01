@@ -20,6 +20,7 @@ import {
   priceToIncome, propertyValue, raiseCash, rebalance, realNetWorth, refreshAccess, retirementAge, sellProperty, sellStock,
   stockValue, totalDebt, usdPremium,
 } from "./ops";
+import { bondYear, fundGrowth, managedProfit, noteEmptyShops, payouts, propertyGrowth } from "./invest";
 import { stream, type Rng } from "./rng";
 import { yearLine } from "./story";
 import { graduate, startSchool, tuitionPerYear } from "./school";
@@ -210,10 +211,11 @@ export function createLife(setup: Setup): LifeState {
     dating: false,
     kids: [],
     lifestyle: "modest",
-    allocation: { cash: 1, usd: 0, bonds: 0, localEq: 0, globalEq: 0, gold: 0, crypto: 0 },
-    holdings: { cash: 0, usd: 0, bonds: 0, localEq: 0, globalEq: 0, gold: 0, crypto: 0 },
+    allocation: { cash: 1, usd: 0, bonds: 0, corp: 0, linkers: 0, ust: 0, localEq: 0, globalEq: 0, reit: 0, gold: 0, crypto: 0 },
+    holdings: { cash: 0, usd: 0, bonds: 0, corp: 0, linkers: 0, ust: 0, localEq: 0, globalEq: 0, reit: 0, gold: 0, crypto: 0 },
     cashHome: 0,
     stocks: [],
+    bondLots: [],
     desk: null,
     properties: [],
     consumerDebt: 0,
@@ -488,6 +490,18 @@ function transitions(s: LifeState, e: YearEcon, r: Rng): void {
   for (const st of s.stocks) {
     if (st.illiquid && st.alive && st.exitYear === s.year) {
       const mult = st.cost > 0 ? st.value / st.cost : 0;
+      if (st.kind === "pe" || st.kind === "stake") {
+        invest(s, st.value);
+        st.alive = false;
+        log(
+          s,
+          st.kind === "pe"
+            ? `${st.name} returns your money after ten years: ${fmt(s, st.value)}, ${mult.toFixed(1)} times what you put in.`
+            : `The owner of ${st.name} buys back your share for ${fmt(s, st.value)}.`,
+          mult >= 1 ? "good" : "bad",
+        );
+        continue;
+      }
       if (mult >= 2) {
         enqueue(s, "startup_exit", { id: st.id });
         continue;
@@ -657,6 +671,7 @@ export function resolveYear(s: LifeState): void {
     const pension = s.retired ? s.pension * w : 0;
     const benefit = !s.job && !s.retired && !s.school && s.unemployedYears === 0 && dev(s) >= 0.65 && s.flags.lastMult ? 0.4 * Number(s.flags.lastMult) * w : 0;
     const rent = rentIncome(s);
+    noteEmptyShops(s);
     const hadBiz = s.business != null;
     const nwBiz = hadBiz ? netWorth(s) : 0;
     const biz = s.business ? businessYear(s, e, prev, r) : 0;
@@ -855,12 +870,17 @@ function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
   const h = s.holdings;
   const before = h.bonds + h.localEq + h.globalEq + stockValue(s, true);
   const btcR = e.btc && prev.btc ? e.btc / prev.btc : 1;
+  const more = fundGrowth(s, e, prev, fxR);
   const growth: Record<AssetKey, number> = {
     cash: 1 + (s.access.bank ? e.dep : 0),
     usd: (1 + usDep) * fxR,
     bonds: 1 + e.bond,
+    corp: more.corp,
+    linkers: more.linkers,
+    ust: more.ust,
     localEq: 1 + e.eq,
     globalEq: (1 + e.usEq) * fxR * (1 - s.access.globalFriction),
+    reit: more.reit,
     gold: (1 + e.gold) * fxR,
     crypto: btcR * fxR,
   };
@@ -868,6 +888,7 @@ function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
     addMove(s, k, h[k] * (growth[k] - 1));
     h[k] *= growth[k];
   }
+  payouts(s, r);
   const picksBefore = stockValue(s);
   const homesBefore = s.properties.reduce((a, p) => a + p.value, 0);
   for (const st of s.stocks) {
@@ -879,13 +900,16 @@ function applyReturns(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): void {
       continue;
     }
     const boost = s.year <= (st.boostUntil ?? 0) ? (st.boost ?? 0) : 0;
-    const ret = st.beta * (e.eq - e.dep) + e.dep + st.drift + boost + st.vol * r.normal() - (st.vol * st.vol) / 2;
-    st.value *= Math.max(0.03, 1 + ret);
+    // the expected year from the market and the company, then its own luck, which can't take it below nothing
+    const mean = st.beta * (e.eq - e.dep) + e.dep + st.drift + boost - (st.payout ?? 0);
+    st.value *= Math.max(0.03, 1 + mean) * Math.exp(st.vol * r.normal() - (st.vol * st.vol) / 2);
   }
   s.stocks = s.stocks.filter((st) => st.alive);
-  addMove(s, "picks", stockValue(s) - picksBefore);
-  for (const p of s.properties) p.value *= 1 + e.house;
+  const picksNow = stockValue(s);
+  addMove(s, "picks", picksNow - picksBefore);
+  for (const p of s.properties) p.value *= 1 + propertyGrowth(p.use, e);
   addMove(s, "home", s.properties.reduce((a, p) => a + p.value, 0) - homesBefore);
+  bondYear(s, e);
   if (s.frozen) {
     addMove(s, "cash", s.frozen.amount * e.dep * 0.3);
     s.frozen.amount *= 1 + e.dep * 0.3;
@@ -924,20 +948,23 @@ function businessYear(s: LifeState, e: YearEcon, prev: YearEcon, r: Rng): number
     b.profit = b.stage >= 1 ? 0.8 * w : 0;
     return b.profit;
   }
-  const skillF = 0.6 + s.stats.skill / 125 + s.stats.network / 250;
+  const skillF = b.managed ? 1 : 0.6 + s.stats.skill / 125 + s.stats.network / 250;
   const cycle = 1 + 1.5 * (e.realGrowth - 0.02) - (e.recession ? 0.2 : 0);
   const fxShock = b.type === "trading" && prev.fx > 0 ? -0.8 * (e.fx / prev.fx - 1 - (e.infl - e.usInfl)) : 0;
   const war = e.war > 100 ? 0.6 : 1;
-  const profit = b.scale * def.profit * w * skillF * Math.exp(r.normal(-(def.vol ** 2) / 2, def.vol)) * Math.max(0.15, cycle + fxShock) * war;
+  const made = b.scale * def.profit * w * skillF * Math.exp(r.normal(-(def.vol ** 2) / 2, def.vol)) * Math.max(0.15, cycle + fxShock) * war;
+  const profit = b.managed ? managedProfit(made, w) : made;
   b.profit = profit;
-  const hz = (age === 0 ? def.hazard[0] : def.hazard[1]) * (1.3 - s.stats.skill / 150) * (e.recession ? 1.6 : 1) * (profit < 0 ? 2 : 1);
+  // a business that has lasted five years is less likely to fail than a new one, and one past ten less again
+  const seasoned = age >= 10 ? 0.55 : age >= 5 ? 0.7 : 1;
+  const hz = (age === 0 ? def.hazard[0] : def.hazard[1]) * seasoned * (b.managed ? 1.05 : 1.3 - s.stats.skill / 150) * (e.recession ? 1.6 : 1) * (profit < 0 ? 2 : 1);
   if (r.chance(hz)) {
     log(s, `${b.name} fails.`, "bad");
     endBusiness(s, "failed", b.invested * 0.1);
     bump(s, "happiness", -10);
     return Math.max(0, profit * 0.3);
   }
-  b.valuation = Math.max(0, profit) * def.multiple * (1 + 0.1 * Math.log(b.scale + 1)) + b.invested * 0.2;
+  b.valuation = Math.max(0, made) * def.multiple * (1 + 0.1 * Math.log(b.scale + 1)) + b.invested * 0.2;
   return profit;
 }
 
@@ -1166,7 +1193,9 @@ export function sellHome(s: LifeState, id: string): void {
   const p = s.properties.find((x) => x.id === id);
   if (!p) return;
   const got = sellProperty(s, id);
-  log(s, `You sell your ${p.kind === "home" ? "home" : "rental"}. After the mortgage you get ${fmt(s, got)}.`, "money");
+  if (p.personal) s.recurring = (s.recurring ?? []).filter((x) => x.key !== `holiday${p.bought}` && x.key !== "cottage");
+  const what = p.kind === "home" ? "home" : p.use === "holiday" || p.personal ? "holiday home" : p.use === "shop" ? "shop unit" : p.use === "farm" ? "farmland" : p.use === "flat" ? "flat" : "rental";
+  log(s, `You sell your ${what}. After the mortgage you get ${fmt(s, got)}.`, "money");
 }
 
 export function repayDebt(s: LifeState, amount: number): void {
@@ -1210,12 +1239,29 @@ export function tradeAsset(s: LifeState, key: AssetKey, amount: number): number 
   return sell;
 }
 
+/** Buy a fund with your cash first, then by selling your other savings (never the fund itself). */
+export function buyWithSavings(s: LifeState, key: AssetKey, amount: number): number {
+  if (key === "cash" || amount <= 0) return 0;
+  const parked = s.holdings[key];
+  s.holdings[key] = 0;
+  const got = raiseCash(s, amount);
+  s.holdings[key] = parked;
+  const cost = key === "usd" ? usdPremium(s) : key === "gold" ? 0.02 : key === "crypto" ? 0.01 : 0.002;
+  s.holdings[key] += got * (1 - cost);
+  if (got > 0) log(s, `You buy ${fmt(s, got)} of ${ASSET_LABEL[key].toLowerCase()}.`, "money");
+  return got;
+}
+
 export const ASSET_LABEL: Record<AssetKey, string> = {
   cash: "Cash & deposits",
   usd: "US dollars",
   bonds: "Government bonds",
+  corp: "Corporate bonds",
+  linkers: "Inflation-linked bonds",
+  ust: "US Treasury bonds",
   localEq: "Local stock index",
   globalEq: "Global stock index",
+  reit: "Property fund",
   gold: "Gold",
   crypto: "Bitcoin",
 };

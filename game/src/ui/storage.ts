@@ -1,7 +1,7 @@
 // Past lives and the life in progress are a per-viewer convenience: kept in this browser
 // only, and the game works the same when storage is unavailable.
 
-import type { LifeState } from "../engine";
+import { upgradeLife, type LifeState } from "../engine";
 
 export interface PastLife {
   name: string;
@@ -76,6 +76,7 @@ export function loadCurrent(): SavedLife | null {
       Array.isArray(l.history) &&
       Array.isArray(l.log) &&
       Array.isArray(l.pending);
+    if (ok) upgradeLife(saved.life);
     return ok ? saved : null;
   } catch {
     return null;

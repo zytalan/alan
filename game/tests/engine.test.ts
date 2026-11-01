@@ -145,7 +145,7 @@ describe("money rules", () => {
   it("moves money without creating or losing any", () => {
     const s = newGame({ mode: "random", seed: 11, country: "DEU", birthYear: 1980 });
     s.access.bank = true;
-    s.allocation = { cash: 0.5, usd: 0, bonds: 0.5, localEq: 0, globalEq: 0, gold: 0, crypto: 0 };
+    s.allocation = { cash: 0.5, usd: 0, bonds: 0.5, corp: 0, linkers: 0, ust: 0, localEq: 0, globalEq: 0, reit: 0, gold: 0, crypto: 0 };
     invest(s, 1000);
     expect(liquid(s)).toBeCloseTo(1000, 6);
     expect(raiseCash(s, 400)).toBeCloseTo(400, 6);

@@ -400,6 +400,9 @@ body::before {
 .item:last-child { border-bottom: 0; }
 .item .t { font-weight: 600; }
 .item .d { font-size: 13px; color: var(--muted); grid-column: 1 / -1; }
+/* an item with several long buttons: title, then the buttons, then the detail */
+.item.stack { grid-template-columns: minmax(0, 1fr); }
+.item.stack .actions { justify-self: start; flex-wrap: wrap; }
 .alloc { display: grid; gap: 10px; }
 .alloc-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 48px; gap: 10px; align-items: center; font-size: 14px; }
 .alloc-row input[type="range"] { width: 100%; accent-color: var(--accent); }
