@@ -19,8 +19,10 @@
     --diag: #cc3a32;
     --select: #eaa21a;
     --on-select: #1c1403;
-    --up: #0f8a6c;
-    --down: #b8406d;
+    --up: #cf3a2c;
+    --down: #13875a;
+    --rise-bg: #f2aa9f;
+    --fall-bg: #a3dcb9;
     --danger: #b3261e;
     --font-ui: "Archivo", "Segoe UI", system-ui, sans-serif;
     --font-data: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
@@ -30,7 +32,7 @@
       --paper: #0e1318; --sheet: #151c24; --ink: #e4e9ef; --ink-2: #94a1af; --rule: #2a3542;
       --band: #1d2731; --field: #10161d; --accent: #9cc0ee; --on-accent: #0e1318;
       --cross: #5c9cff; --diag: #ff6a5f; --select: #f3b43c; --on-select: #1c1403;
-      --up: #3fcca8; --down: #f27fa6; --danger: #ff8a80;
+      --up: #ff7b6e; --down: #4fcf8e; --rise-bg: #7d2d26; --fall-bg: #1f6240; --danger: #ff8a80;
       color-scheme: dark;
     }
   }
@@ -38,7 +40,7 @@
     --paper: #0e1318; --sheet: #151c24; --ink: #e4e9ef; --ink-2: #94a1af; --rule: #2a3542;
     --band: #1d2731; --field: #10161d; --accent: #9cc0ee; --on-accent: #0e1318;
     --cross: #5c9cff; --diag: #ff6a5f; --select: #f3b43c; --on-select: #1c1403;
-    --up: #3fcca8; --down: #f27fa6; --danger: #ff8a80;
+    --up: #ff7b6e; --down: #4fcf8e; --rise-bg: #7d2d26; --fall-bg: #1f6240; --danger: #ff8a80;
     color-scheme: dark;
   }
   *, *::before, *::after { box-sizing: border-box; }
@@ -111,7 +113,8 @@
   .seg { display: inline-flex; }
   .seg button { border-radius: 0; }
   .seg button:first-child { border-radius: 4px 0 0 4px; }
-  .seg button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+  .seg button:last-child { border-radius: 0 4px 4px 0; }
+  .seg button + button { border-left: 0; }
   .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .zoom { display: inline-flex; gap: 4px; }
   .zoom button { min-width: 34px; padding: 0 8px; }
@@ -151,6 +154,8 @@
   .c:hover { box-shadow: inset 0 0 0 1px var(--ink); }
   .c.lvu { box-shadow: inset 0 0 0 2px var(--up); font-weight: 600; }
   .c.lvd { box-shadow: inset 0 0 0 2px var(--down); font-weight: 600; }
+  .c.tru { background: var(--rise-bg) !important; color: var(--ink) !important; }
+  .c.trd { background: var(--fall-bg) !important; color: var(--ink) !important; }
   .c.sel { background: var(--select) !important; color: var(--on-select) !important; font-weight: 700; }
   .c.sel .v { color: var(--on-select); }
   .overlay { position: absolute; left: 0; top: 0; pointer-events: none; overflow: hidden; }
@@ -167,6 +172,10 @@
   .sw.up { border-color: var(--up); }
   .sw.down { border-color: var(--down); }
   .sw.sel { background: var(--select); border-color: var(--select); }
+  .sw.rise { background: var(--rise-bg); border-color: var(--rise-bg); }
+  .sw.fall { background: var(--fall-bg); border-color: var(--fall-bg); }
+  .trend { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
+  .trend .seg { flex-wrap: wrap; }
 
   /* Readout */
   .readout { display: flex; flex-direction: column; gap: 12px; min-width: 0; position: sticky; top: env(safe-area-inset-top, 0px); }
@@ -300,6 +309,8 @@
         <span><i class="sw box sel"></i>Selected</span>
         <span><i class="sw box up"></i>Level above</span>
         <span><i class="sw box down"></i>Level below</span>
+        <span><i class="sw box rise"></i>Uptrend cells</span>
+        <span><i class="sw box fall"></i>Downtrend cells</span>
       </p>
     </div>
 
@@ -309,6 +320,16 @@
         <p class="big" id="selMain"></p>
         <p class="sub" id="selSub"></p>
         <dl class="facts" id="facts"></dl>
+        <div class="trend">
+          <p class="eyebrow" id="trendLabel">Trend from this cell</p>
+          <div class="seg" role="group" aria-labelledby="trendLabel">
+            <button type="button" id="trendOff" aria-pressed="true">Off</button>
+            <button type="button" id="trendUp" aria-pressed="false">Uptrend</button>
+            <button type="button" id="trendDown" aria-pressed="false">Downtrend</button>
+          </div>
+          <p class="note" id="trendNote" hidden></p>
+          <dl class="facts" id="trendFacts" hidden></dl>
+        </div>
       </section>
 
       <section class="card" aria-labelledby="lvTitle">
@@ -489,8 +510,38 @@ var Gann = (function () {
     return WEEKDAYS[weekday(ms)] + " " + iso(ms);
   }
 
+  /* Uptrend / downtrend cells from a pivot (mirrors gannsquare/trend.py). */
+  var OUTWARD = { W: [-1, 0], NW: [-1, 1], N: [0, 1], NE: [1, 1], E: [1, 0], SE: [1, -1], S: [0, -1], SW: [-1, -1] };
+  function cornerZone(k) { return k <= 1 ? 0 : Math.min(3, Math.max(1, Math.floor((k - 2) / 2))); }
+  function facing(n) {
+    var k = ringOf(n);
+    if (!k) return null;
+    var i = indexInRing(n), h = cornerZone(k);
+    var corners = [[0, "SW"], [2 * k, "NW"], [4 * k, "NE"], [6 * k, "SE"], [8 * k, "SW"]];
+    for (var j = 0; j < corners.length; j++) if (Math.abs(i - corners[j][0]) <= h) return corners[j][1];
+    return ["W", "N", "E", "S"][Math.floor((i - 1) / (2 * k))];
+  }
+  function trendCells(n, rings, direction) {
+    if (direction !== "up" && direction !== "down") throw new Error("direction must be 'up' or 'down'");
+    var k = ringOf(n);
+    if (!k) return [];
+    var p = coords(n), o = OUTWARD[facing(n)];
+    var r = direction === "up" ? [o[1], -o[0]] : [-o[1], o[0]];
+    var limit = direction === "up" ? n + 8 * k : n - 1, found = {};
+    function add(x, y) {
+      if (Math.max(Math.abs(x), Math.abs(y)) > rings) return false;
+      var m = numberAt(x, y);
+      if (m <= limit) found[m] = true;
+      return true;
+    }
+    for (var t = 1; add(p[0] - t * o[0], p[1] - t * o[1]); t++) { /* line 1: pivot inward */ }
+    var s = Math.floor((p[0] * o[1] - p[1] * o[0]) / (r[0] * o[1] - r[1] * o[0])) + 1;
+    while (add(s * r[0], s * r[1])) s++; /* line 2: centre line past the crossing */
+    return Object.keys(found).map(Number).sort(function (a, b) { return a - b; });
+  }
+
   return {
-    MAX_RINGS: MAX_RINGS, LINE_NAMES: LINE_NAMES,
+    MAX_RINGS: MAX_RINGS, LINE_NAMES: LINE_NAMES, cornerZone: cornerZone, facing: facing, trendCells: trendCells,
     ringOf: ringOf, indexInRing: indexInRing, coords: coords, numberAt: numberAt, degree: degree,
     lineAt: lineAt, between: between, ringsFor: ringsFor,
     sqrtDegree: sqrtDegree, level: level, levels: levels, scale: scale, unscale: unscale, autoExponent: autoExponent,
@@ -513,7 +564,7 @@ var Gann = (function () {
     mode: "number", startDate: new Date().getFullYear() + "-01-01", unit: "day", showNums: true,
     lines: true, tangents: false, shade: 3, fs: 0,
     click: "inspect", markColor: "#8fd694", marks: {},
-    sel: 100, every: 45, turns: 1, scale: "auto"
+    sel: 100, every: 45, turns: 1, scale: "auto", trend: "off"
   };
 
   function readJSON(text) {
@@ -562,7 +613,7 @@ var Gann = (function () {
     }
     var sp = G.spanning(start, end, step), R = sp.rings, m = 2 * R + 1, cells = m * m;
     var dec = Math.max(G.decimalsOf(start), G.decimalsOf(step));
-    Q = { start: start, step: step, R: R, m: m, cells: cells, dec: dec, date: dateMode, startMs: startMs, unit: S.unit, els: null, sel: null, lv: [], lvTag: {} };
+    Q = { start: start, step: step, R: R, m: m, cells: cells, dec: dec, date: dateMode, startMs: startMs, unit: S.unit, els: null, sel: null, lv: [], lvTag: {}, tr: [], trSet: {} };
 
     var numChars = G.valueLabel(cells, start, step, dec).length;
     var em = numChars * 0.6 + 0.6;
@@ -679,6 +730,7 @@ var Gann = (function () {
     if (Q.date) parts.push(G.longDate(G.dateAt(Q.startMs, n, Q.unit), Q.unit));
     parts.push(fmt(+G.valueLabel(n, Q.start, Q.step, Q.dec), Q.dec));
     if (Q.lvTag[n]) parts.push("level " + Q.lvTag[n]);
+    if (Q.trSet[n]) parts.push(S.trend === "up" ? "uptrend cell" : "downtrend cell");
     return parts.join("  ·  ");
   }
 
@@ -690,6 +742,7 @@ var Gann = (function () {
     $("from").value = Q.date ? String(n) : G.valueLabel(n, Q.start, Q.step, Q.dec);
     renderCell(n);
     renderLevels();
+    renderTrend();
     drawOverlay();
     if (opt.scroll) scrollToCell(n);
     save();
@@ -771,6 +824,42 @@ var Gann = (function () {
       : "Above = (√P + angle/180)², below = (√P − angle/180)². Rings on the square mark the levels that fall inside it.";
   }
 
+  function cellText(n) {
+    if (!Q.date) return fmt(+G.valueLabel(n, Q.start, Q.step, Q.dec), Q.dec);
+    var ms = G.dateAt(Q.startMs, n, Q.unit);
+    return Q.unit === "month" || Q.unit === "year" ? G.longDate(ms, Q.unit) : G.iso(ms);
+  }
+  function renderTrend() {
+    Q.tr.forEach(function (el) { el.classList.remove("tru", "trd"); });
+    Q.tr = []; Q.trSet = {};
+    ["Off", "Up", "Down"].forEach(function (w) { $("trend" + w).setAttribute("aria-pressed", String(S.trend === w.toLowerCase())); });
+    var note = $("trendNote"), facts = $("trendFacts");
+    if (S.trend === "off" || !Q.sel) { note.hidden = true; facts.hidden = true; return; }
+    var up = S.trend === "up";
+    note.hidden = false;
+    if (Q.sel === 1) { note.textContent = "The centre cell has no trend. Pick another cell."; facts.hidden = true; return; }
+    var cells = G.trendCells(Q.sel, Q.R, S.trend);
+    cells.forEach(function (n) {
+      var el = Q.els[n];
+      if (!el) return;
+      el.classList.add(up ? "tru" : "trd");
+      Q.tr.push(el); Q.trSet[n] = true;
+    });
+    note.textContent = (up ? "Uptrend" : "Downtrend") + " from cell " + Q.sel.toLocaleString("en-US") + ": " +
+      cells.length + " cells marked " + (up ? "red" : "green") + ".";
+    var after = cells.filter(function (n) { return n > Q.sel; }).slice(0, 5);
+    var before = cells.filter(function (n) { return n < Q.sel; }).reverse().slice(0, 5);
+    var list = function (ns) { return ns.length ? ns.map(cellText).join("  \u00b7  ") : "\u2014"; };
+    facts.textContent = "";
+    [[Q.date ? "Next later" : "Next above", after], [Q.date ? "Next earlier" : "Next below", before]].forEach(function (r) {
+      if (!up && r[1] === after) return;
+      var dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = r[0]; dd.textContent = list(r[1]);
+      facts.appendChild(dt); facts.appendChild(dd);
+    });
+    facts.hidden = false;
+  }
+
   function paintMark(n, color) {
     var el = Q.els[n];
     if (!el) return;
@@ -848,6 +937,10 @@ var Gann = (function () {
     for (var key in S.marks) { var el = Q.els[+key]; if (el) { el.style.backgroundColor = ""; el.style.color = ""; } }
     S.marks = {}; save();
   });
+  function setTrend(t) { S.trend = t; renderTrend(); save(); }
+  $("trendOff").addEventListener("click", function () { setTrend("off"); });
+  $("trendUp").addEventListener("click", function () { setTrend("up"); });
+  $("trendDown").addEventListener("click", function () { setTrend("down"); });
   $("findBtn").addEventListener("click", find);
   $("find").addEventListener("keydown", function (e) { if (e.key === "Enter") find(); });
   $("from").addEventListener("input", renderLevels);

@@ -70,3 +70,12 @@ def test_render(tmp_path):
         "startDate": "2026-01-02",
         "unit": "trading",
     }
+
+
+def test_square_with_trend():
+    out = invoke("square", "--end", "49", "--mark", "9", "--trend", "up")
+    assert out.splitlines()[0].split()[0] == "31"
+    result = runner.invoke(app, ["square", "--end", "49", "--trend", "up"])
+    assert result.exit_code == 1
+    result = runner.invoke(app, ["square", "--end", "49", "--mark", "9", "--trend", "sideways"])
+    assert result.exit_code == 1

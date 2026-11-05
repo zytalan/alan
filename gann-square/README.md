@@ -31,8 +31,12 @@ On the page:
 - **Cells show**: Numbers, or Dates from a centre date, adding 1 day, trading day,
   week, month or year per cell. Numbers can stay under the dates.
 - **Click a cell** to select it. The panel shows its ring and angle and the levels
-  every 45° (or 15°–180°), and rings those levels on the square: green above,
-  rose below. Switch to *Marks it* to color cells instead.
+  every 45° (or 15°–180°), and rings those levels on the square: red above, green
+  below. Switch to *Marks it* to color cells instead.
+- **Trend (上升/下降趋势)**: in the selected-cell panel, pick *Uptrend* or *Downtrend*.
+  Cells are filled red for an uptrend and green for a downtrend, the same marking as
+  ganninvestor.com. The panel lists the next marked values above and below the
+  pivot. The choice stays on while you click other cells.
 - **Find** jumps to a number or a date (YYYY-MM-DD).
 - **View**: angle lines, diagonals through the selected cell, ring shading, zoom.
 
@@ -45,6 +49,7 @@ gann levels 1234.5                  # levels above/below every 45°
 gann levels 1.0850 --scale 10000    # small prices: pick the scale or leave it on auto
 gann where 1234 --start 100         # cell, ring, angle, nearest line
 gann square --end 49 --mark 30      # print the square, cross blue, diagonals red
+gann square --end 81 --mark 50 --trend up    # uptrend cells from pivot 50
 gann square --end 25 --dates 2026-01-01 --unit month
 gann time 2026-01-02 --unit trading # dates on the crosses/diagonals from a pivot
 ```

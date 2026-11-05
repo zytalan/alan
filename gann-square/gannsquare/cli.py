@@ -16,6 +16,7 @@ from . import __version__, spiral
 from . import levels as lv
 from .render import render_document
 from .square import UNIT_LABELS, UNITS, Square, date_at, decimals_of, long_date, short_date
+from .trend import trend_cells
 
 app = typer.Typer(
     add_completion=False,
@@ -130,9 +131,16 @@ def square(
     ),
     unit: str = typer.Option("day", help=f"Date step per cell: {', '.join(UNITS)}."),
     mark: float | None = typer.Option(None, help="Highlight the cell holding this number."),
+    trend: str | None = typer.Option(
+        None, help="With --mark: show the 'up' (上升) or 'down' (下降) trend from that cell."
+    ),
 ) -> None:
     """Print the square in the terminal: cross in blue, diagonals in red."""
     _check_unit(unit)
+    if trend not in (None, "up", "down"):
+        _fail("--trend must be 'up' or 'down'.")
+    if trend and mark is None:
+        _fail("--trend needs --mark to choose the pivot cell.")
     try:
         sq = Square.spanning(start, end, step)
     except ValueError as exc:
@@ -148,13 +156,21 @@ def square(
     }
     width = max(len(s) for s in labels.values())
     marked = sq.cell_for(mark) if mark is not None else None
+    if mark is not None and marked is None:
+        _fail(f"{mark:g} is not on this square.")
+    trend_set = set(trend_cells(marked, sq.rings, trend)) if trend else set()
+    trend_style = "bold white on red" if trend == "up" else "bold white on green"
     out = Text()
     for row in spiral.grid(sq.rings):
         for col, n in enumerate(row):
             line = spiral.line_at(n)
             style = ""
-            if n == 1:
+            if n in trend_set:
+                style = trend_style
+            elif n == 1:
                 style = "bold"
+            elif trend:
+                style = ""
             elif line and "cross" in line:
                 style = "bold blue"
             elif line and "diagonal" in line:

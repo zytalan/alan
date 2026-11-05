@@ -15,6 +15,7 @@ from gannsquare import levels as lv
 from gannsquare import spiral
 from gannsquare.render import page_fragment
 from gannsquare.square import Square, cell_for_date, date_at, decimals_of, long_date, short_date
+from gannsquare.trend import corner_zone, facing, trend_cells
 
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="needs Node.js")
@@ -119,3 +120,20 @@ def test_dates_match():
                 calls.append(["cellForDateISO", [s, target, u, 441]])
                 expected.append(cell_for_date(d0, date.fromisoformat(target), u, 441))
     assert run_js(calls) == expected
+
+
+def test_trend_matches():
+    cases = [
+        (n, rings, d)
+        for rings in (3, 14, 40)
+        for n in range(1, (2 * rings + 1) ** 2 + 1, 37)
+        for d in ("up", "down")
+    ]
+    cases += [
+        (n, 14, d) for n in (2, 9, 119, 121, 172, 183, 200, 210, 222, 840) for d in ("up", "down")
+    ]
+    got = run_js([["trendCells", list(c)] for c in cases])
+    assert got == [trend_cells(*c) for c in cases]
+    ns = list(range(1, 2000, 3))
+    assert run_js([["facing", [n]] for n in ns]) == [facing(n) for n in ns]
+    assert run_js([["cornerZone", [k]] for k in range(80)]) == [corner_zone(k) for k in range(80)]

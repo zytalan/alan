@@ -36,6 +36,23 @@ converts the answer back to a date: (√n ± θ/180)² cells from the centre dat
 `gann time` lists the dates that land on the crosses and diagonals when a pivot
 date is the centre.
 
+**Trends (上升趋势 / 下降趋势).** These reproduce the marking on ganninvestor.com,
+which I worked out by clicking every cell of its square headlessly:
+
+1. The pivot faces a diagonal if it sits within a few cells of a corner (1 cell
+   on rings 2–5, 2 on rings 6–7, 3 from ring 8 out). Otherwise it faces its side.
+2. Line 1 runs from the pivot straight inward, across the square.
+3. Line 2 is the centre line at right angles to it, taken from where they cross,
+   towards the side 90° clockwise of the pivot for an uptrend (the way the numbers
+   grow) or 90° counter-clockwise for a downtrend.
+4. An uptrend keeps cells up to one full turn past the pivot (n + 8k). A
+   downtrend keeps the cells numbered below the pivot.
+
+On a 14-ring and a 30-ring square this matches the site cell for cell, except
+for cells 119 and 222, where the site's hand-written cases are lopsided. The
+site also fails on uptrends from its outermost ring; here they are clipped to
+the square.
+
 ## Layout
 
 ```
@@ -43,6 +60,7 @@ gann-square/
   gannsquare/
     spiral.py      # cell number ↔ (x, y), rings, degrees, cross/diagonal lines
     levels.py      # square-root levels, auto scaling
+    trend.py       # uptrend / downtrend cells from a pivot
     square.py      # Start/End/Step values; date labels (day, trading, week, month, year)
     render.py      # writes the page as a standalone HTML file
     cli.py         # the `gann` command
@@ -63,6 +81,8 @@ Node.js isn't installed.
   lines, ring shading, find, select (shows the levels and rings them on the
   square), colour marks, diagonals through the selection, zoom. Settings and marks
   are remembered in the browser.
+- **Phase 3b: Trends** ✅ Uptrend/downtrend from the selected cell (page) and
+  `gann square --mark N --trend up|down` (terminal).
 - **Phase 4: Next, pick what's useful**
   - Mirror cells (the reference site's 镜像) and more angle-line options.
   - Other squares: 144, 90, 52 (weekly), and the hexagon.
