@@ -132,13 +132,14 @@ def square(
     unit: str = typer.Option("day", help=f"Date step per cell: {', '.join(UNITS)}."),
     mark: float | None = typer.Option(None, help="Highlight the cell holding this number."),
     trend: str | None = typer.Option(
-        None, help="With --mark: show the 'up' (上升) or 'down' (下降) trend from that cell."
+        None,
+        help="With --mark: show the 'up' (上升), 'down' (下降) or 'both' trends from that cell.",
     ),
 ) -> None:
     """Print the square in the terminal: cross in blue, diagonals in red."""
     _check_unit(unit)
-    if trend not in (None, "up", "down"):
-        _fail("--trend must be 'up' or 'down'.")
+    if trend not in (None, "up", "down", "both"):
+        _fail("--trend must be 'up', 'down' or 'both'.")
     if trend and mark is None:
         _fail("--trend needs --mark to choose the pivot cell.")
     try:
@@ -158,15 +159,21 @@ def square(
     marked = sq.cell_for(mark) if mark is not None else None
     if mark is not None and marked is None:
         _fail(f"{mark:g} is not on this square.")
-    trend_set = set(trend_cells(marked, sq.rings, trend)) if trend else set()
-    trend_style = "bold white on red" if trend == "up" else "bold white on green"
+    up = set(trend_cells(marked, sq.rings, "up")) if trend in ("up", "both") else set()
+    down = set(trend_cells(marked, sq.rings, "down")) if trend in ("down", "both") else set()
     out = Text()
     for row in spiral.grid(sq.rings):
         for col, n in enumerate(row):
             line = spiral.line_at(n)
             style = ""
-            if n in trend_set:
-                style = trend_style
+            if n == marked and trend:
+                style = "reverse bold"
+            elif n in up and n in down:
+                style = "bold black on yellow"
+            elif n in up:
+                style = "bold white on red"
+            elif n in down:
+                style = "bold white on green"
             elif n == 1:
                 style = "bold"
             elif trend:

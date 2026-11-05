@@ -81,9 +81,12 @@ Node.js isn't installed.
   lines, ring shading, find, select (shows the levels and rings them on the
   square), colour marks, diagonals through the selection, zoom. Settings and marks
   are remembered in the browser.
-- **Phase 3b: Trends** ✅ Uptrend/downtrend from the selected cell (page) and
-  `gann square --mark N --trend up|down` (terminal).
+- **Phase 3b: Trends** ✅ Up / down / both from the selected cell, with solid fills,
+  split cells where they overlap, and direction arrows (page), plus
+  `gann square --mark N --trend up|down|both` (terminal).
 - **Phase 4: Next, pick what's useful**
+  - Several pivots at once (e.g. uptrend from a low and downtrend from a high).
+  - Chinese interface.
   - Mirror cells (the reference site's 镜像) and more angle-line options.
   - Other squares: 144, 90, 52 (weekly), and the hexagon.
   - Load an OHLC CSV and draw the levels and time projections on a price chart.

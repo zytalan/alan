@@ -137,3 +137,10 @@ def test_trend_matches():
     ns = list(range(1, 2000, 3))
     assert run_js([["facing", [n]] for n in ns]) == [facing(n) for n in ns]
     assert run_js([["cornerZone", [k]] for k in range(80)]) == [corner_zone(k) for k in range(80)]
+
+
+def test_trend_paths_cover_trend_cells():
+    cases = [(n, 14, d) for n in range(2, 841, 13) for d in ("up", "down")]
+    got = run_js([["trendPaths", list(c)] for c in cases])
+    for (n, rings, d), paths in zip(cases, got):
+        assert sorted(set(paths["line1"] + paths["line2"])) == trend_cells(n, rings, d)
