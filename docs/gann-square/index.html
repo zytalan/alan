@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Square of Nine</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,400..800&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+  /* Layout: an instrument panel. A strip of controls over a drafting board, with a readout column beside it. */
+  :root {
+    --paper: #eef1f4;
+    --sheet: #ffffff;
+    --ink: #18212b;
+    --ink-2: #5a6572;
+    --rule: #d3d9e0;
+    --band: #e2e8ef;
+    --field: #ffffff;
+    --accent: #1f3f66;
+    --on-accent: #ffffff;
+    --cross: #2263c9;
+    --diag: #cc3a32;
+    --select: #eaa21a;
+    --on-select: #1c1403;
+    --up: #cf3a2c;
+    --down: #13875a;
+    --rise: #e2382d;
+    --fall: #1f9a52;
+    --on-trend: #ffffff;
+    --rise-line: #5c0f0a;
+    --fall-line: #08401f;
+    --halo: #ffffff;
+    --danger: #b3261e;
+    --font-ui: "Archivo", "Segoe UI", system-ui, sans-serif;
+    --font-data: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0e1318; --sheet: #151c24; --ink: #e4e9ef; --ink-2: #94a1af; --rule: #2a3542;
+      --band: #1d2731; --field: #10161d; --accent: #9cc0ee; --on-accent: #0e1318;
+      --cross: #5c9cff; --diag: #ff6a5f; --select: #f3b43c; --on-select: #1c1403;
+      --up: #ff7b6e; --down: #4fcf8e; --danger: #ff8a80;
+      --rise: #d8392f; --fall: #23964f; --on-trend: #ffffff; --rise-line: #ffd9d4; --fall-line: #d2f7e0; --halo: #0e1318;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0e1318; --sheet: #151c24; --ink: #e4e9ef; --ink-2: #94a1af; --rule: #2a3542;
+    --band: #1d2731; --field: #10161d; --accent: #9cc0ee; --on-accent: #0e1318;
+    --cross: #5c9cff; --diag: #ff6a5f; --select: #f3b43c; --on-select: #1c1403;
+    --up: #ff7b6e; --down: #4fcf8e; --danger: #ff8a80;
+    --rise: #d8392f; --fall: #23964f; --on-trend: #ffffff; --rise-line: #ffd9d4; --fall-line: #d2f7e0; --halo: #0e1318;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 var(--font-ui);
+  }
+  .app {
+    max-width: 1680px;
+    margin: 0 auto;
+    padding-block: 18px 32px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Header */
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+  .top h1 {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-stretch: 125%;
+    font-variation-settings: "wdth" 125;
+    font-weight: 800;
+    font-size: 26px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .top .tag {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .summary {
+    margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--ink-2);
+  }
+
+  /* Controls */
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .grp {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px;
+    padding: 8px 10px 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px;
+    min-width: 0;
+  }
+  .gl {
+    flex-basis: 100%;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+  .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); padding-bottom: 6px; cursor: pointer; }
+  input, select, button { font: inherit; color: var(--ink); }
+  input[type="number"], input[type="text"], input[type="date"], select {
+    height: 32px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--field);
+    font-family: var(--font-data); font-size: 14px; font-variant-numeric: tabular-nums;
+  }
+  input[type="number"] { width: 7.5em; }
+  input[type="text"] { width: 10em; }
+  input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--rule); border-radius: 4px; background: var(--field); }
+  input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+  button {
+    height: 32px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 4px; background: var(--field);
+    cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  button:hover { border-color: var(--ink-2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  :focus-visible { outline: 2px solid var(--select); outline-offset: 2px; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; }
+  .seg button:first-child { border-radius: 4px 0 0 4px; }
+  .seg button:last-child { border-radius: 0 4px 4px 0; }
+  .seg button + button { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .zoom { display: inline-flex; gap: 4px; }
+  .zoom button { min-width: 34px; padding: 0 8px; }
+  .pill {
+    align-self: flex-end; height: 32px; display: inline-flex; align-items: center; padding: 0 10px;
+    border-radius: 16px; background: var(--band); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px;
+  }
+  .inline { display: contents; }
+  .msg { margin: 0; min-height: 1.2em; font-size: 13px; color: var(--ink-2); }
+  .msg.err { color: var(--danger); font-weight: 600; }
+
+  /* Work area */
+  .work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  .board-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .hover {
+    margin: 0; min-height: 1.45em; font-family: var(--font-data); font-variant-numeric: tabular-nums;
+    font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .wrap {
+    overflow: auto; max-height: 80vh; padding: 12px; background: var(--sheet);
+    border: 1px solid var(--rule); border-radius: 6px; overscroll-behavior: contain;
+  }
+  .board { position: relative; width: max-content; margin: 0 auto; }
+  .grid {
+    display: grid; gap: 1px; background: var(--rule); outline: 1px solid var(--rule);
+    grid-template-columns: repeat(var(--m), var(--cell));
+    grid-auto-rows: var(--cell);
+  }
+  .c {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--sheet); color: var(--ink); line-height: 1.05; overflow: hidden; white-space: nowrap;
+    font-family: var(--font-data); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none;
+  }
+  .c.band { background: var(--band); }
+  .c.ctr { background: var(--band); font-weight: 600; }
+  .c .v { font-size: 0.8em; color: var(--ink-2); }
+  .c:hover { box-shadow: inset 0 0 0 1px var(--ink); }
+  .c.lvu { box-shadow: inset 0 0 0 2px var(--up); font-weight: 600; }
+  .c.lvd { box-shadow: inset 0 0 0 2px var(--down); font-weight: 600; }
+  .c.tru, .c.trd, .c.trb { color: var(--on-trend) !important; font-weight: 700; text-shadow: 0 0 2px rgba(0, 0, 0, 0.35); }
+  .c.tru { background: var(--rise) !important; }
+  .c.trd { background: var(--fall) !important; }
+  .c.trb { background: linear-gradient(135deg, var(--rise) 0 50%, var(--fall) 50% 100%) !important; }
+  .c.tru .v, .c.trd .v, .c.trb .v { color: inherit; opacity: 0.85; }
+  .grid.nolv .c.lvu, .grid.nolv .c.lvd { box-shadow: none; font-weight: inherit; }
+  .c.lvu.tru, .c.lvu.trd, .c.lvu.trb, .c.lvd.tru, .c.lvd.trd, .c.lvd.trb { box-shadow: inset 0 0 0 2px var(--on-trend); }
+  .c.sel, .c.sel:hover { background: var(--select) !important; color: var(--on-select) !important; font-weight: 700; box-shadow: inset 0 0 0 3px var(--ink); text-shadow: none; }
+  .c.sel .v { color: var(--on-select); }
+  .overlay { position: absolute; left: 0; top: 0; pointer-events: none; overflow: hidden; }
+  .overlay line { stroke-width: 1.4; opacity: 0.6; }
+  .overlay .ln-cross { stroke: var(--cross); }
+  .overlay .ln-diag { stroke: var(--diag); }
+  .overlay .ln-tan { stroke: var(--select); stroke-dasharray: 6 4; opacity: 0.9; stroke-width: 1.6; }
+  .overlay line.ar-up, .overlay line.ar-down { stroke-width: 2.2; opacity: 0.95; stroke-linecap: round; }
+  .overlay line.ar-up { stroke: var(--rise-line); }
+  .overlay line.ar-down { stroke: var(--fall-line); }
+  .overlay .ah-up { fill: var(--rise-line); stroke: var(--halo); stroke-width: 1.2; }
+  .overlay .ah-down { fill: var(--fall-line); stroke: var(--halo); stroke-width: 1.2; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 12px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; }
+  .sw.cross { border-color: var(--cross); }
+  .sw.diag { border-color: var(--diag); }
+  .sw.box { width: 12px; height: 12px; border: 2px solid; border-radius: 2px; }
+  .sw.up { border-color: var(--up); }
+  .sw.down { border-color: var(--down); }
+  .sw.sel { background: var(--select); border-color: var(--select); }
+  .sw.rise { background: var(--rise); border-color: var(--rise); }
+  .sw.fall { background: var(--fall); border-color: var(--fall); }
+  .sw.both { background: linear-gradient(135deg, var(--rise) 0 50%, var(--fall) 50% 100%); border-color: transparent; }
+  .sw.sel { box-shadow: inset 0 0 0 2px var(--ink); }
+  .trend { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
+  .trend-grp { border-color: var(--ink-2); }
+  #trendUp[aria-pressed="true"] { background: var(--rise); border-color: var(--rise); color: var(--on-trend); }
+  #trendDown[aria-pressed="true"] { background: var(--fall); border-color: var(--fall); color: var(--on-trend); }
+  #trendBoth[aria-pressed="true"] { background: linear-gradient(135deg, var(--rise) 0 50%, var(--fall) 50% 100%); border-color: var(--fall); color: var(--on-trend); }
+
+  /* Readout */
+  .readout { display: flex; flex-direction: column; gap: 12px; min-width: 0; position: sticky; top: env(safe-area-inset-top, 0px); }
+  .card { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .eyebrow { margin: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+  .big {
+    margin: 0; font-family: var(--font-ui); font-stretch: 112%; font-variation-settings: "wdth" 112;
+    font-weight: 700; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+  }
+  .sub { margin: 0; font-family: var(--font-data); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
+  .facts dt { color: var(--ink-2); }
+  .facts dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+  .card h2 { margin: 0; font-size: 16px; font-weight: 700; font-stretch: 112%; font-variation-settings: "wdth" 112; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .lv-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lv-controls input[type="number"] { width: 8.5em; }
+  .tbl-wrap { overflow-x: auto; }
+  table.lv { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; }
+  table.lv th { text-align: right; font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); padding: 4px 6px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  table.lv th:first-child, table.lv td:first-child { text-align: left; }
+  table.lv td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--band); white-space: nowrap; }
+  table.lv tr.major td { font-weight: 600; }
+  table.lv tr.major td:first-child { color: var(--accent); }
+  table.lv td.up { color: var(--up); }
+  table.lv td.down { color: var(--down); }
+  table.lv td small { display: block; font-size: 11px; color: var(--ink-2); font-weight: 400; }
+  .note { margin: 0; font-size: 12px; color: var(--ink-2); }
+
+  @media (max-width: 960px) {
+    .work { grid-template-columns: minmax(0, 1fr); }
+    .readout { position: static; }
+    .wrap { max-height: 70vh; }
+  }
+  @media (max-width: 480px) {
+    .grp { flex: 1 1 100%; }
+    .top h1 { font-size: 22px; }
+  }
+</style>
+
+<script id="gann-init" type="application/json">{}</script>
+
+<div class="app">
+  <header class="top">
+    <h1>Square of Nine</h1>
+    <span class="tag">W. D. Gann</span>
+    <p class="summary" id="summary"></p>
+  </header>
+
+  <div class="controls">
+    <div class="grp" role="group" aria-labelledby="g-range">
+      <span class="gl" id="g-range">Range</span>
+      <label class="f" for="start">Start (centre)<input id="start" type="number" step="any" inputmode="decimal"></label>
+      <label class="f" for="end">End<input id="end" type="number" step="any" inputmode="decimal"></label>
+      <label class="f" for="step">Step<input id="step" type="number" step="any" min="0" inputmode="decimal"></label>
+      <output class="pill" id="ringsOut" for="start end step"></output>
+    </div>
+
+    <div class="grp trend-grp" role="group" aria-labelledby="g-trend">
+      <span class="gl" id="g-trend">Trend from the selected cell</span>
+      <div class="seg">
+        <button type="button" id="trendOff" aria-pressed="false">Off</button>
+        <button type="button" id="trendUp" aria-pressed="false">▲ Up</button>
+        <button type="button" id="trendDown" aria-pressed="false">▼ Down</button>
+        <button type="button" id="trendBoth" aria-pressed="false">Both</button>
+      </div>
+      <label class="chk" for="arrows"><input type="checkbox" id="arrows"> Arrows</label>
+    </div>
+
+    <div class="grp" role="group" aria-labelledby="g-labels">
+      <span class="gl" id="g-labels">Cells show</span>
+      <div class="seg">
+        <button type="button" id="modeNumber" aria-pressed="true">Numbers</button>
+        <button type="button" id="modeDate" aria-pressed="false">Dates</button>
+      </div>
+      <div class="inline" id="dateOpts">
+        <label class="f" for="startDate">Centre date<input id="startDate" type="date"></label>
+        <label class="f" for="unit">Each cell adds
+          <select id="unit">
+            <option value="day">1 calendar day</option>
+            <option value="trading">1 trading day</option>
+            <option value="week">1 week</option>
+            <option value="month">1 month</option>
+            <option value="year">1 year</option>
+          </select>
+        </label>
+        <label class="chk" for="showNums"><input type="checkbox" id="showNums"> Numbers under dates</label>
+      </div>
+    </div>
+
+    <div class="grp" role="group" aria-labelledby="g-view">
+      <span class="gl" id="g-view">View</span>
+      <label class="chk" for="lines"><input type="checkbox" id="lines"> Angle lines</label>
+      <label class="chk" for="tangents"><input type="checkbox" id="tangents"> Pivot diagonals</label>
+      <label class="chk" for="lvRings"><input type="checkbox" id="lvRings"> Level rings</label>
+      <label class="f" for="shade">Shade rings
+        <select id="shade">
+          <option value="0">Off</option>
+          <option value="2">Every 2nd</option>
+          <option value="3">Every 3rd</option>
+          <option value="4">Every 4th</option>
+          <option value="5">Every 5th</option>
+        </select>
+      </label>
+      <div class="zoom">
+        <button type="button" id="zoomOut" aria-label="Smaller cells">−</button>
+        <button type="button" id="fit">Fit</button>
+        <button type="button" id="zoomIn" aria-label="Larger cells">+</button>
+      </div>
+    </div>
+
+    <div class="grp" role="group" aria-labelledby="g-click">
+      <span class="gl" id="g-click">Clicking a cell</span>
+      <div class="seg">
+        <button type="button" id="clickInspect" aria-pressed="true">Selects it</button>
+        <button type="button" id="clickMark" aria-pressed="false">Marks it</button>
+      </div>
+      <label class="f" for="markColor">Mark color<input type="color" id="markColor"></label>
+      <button type="button" id="clearMarks">Clear marks</button>
+    </div>
+
+    <div class="grp" role="group" aria-labelledby="g-find">
+      <span class="gl" id="g-find">Find</span>
+      <label class="f" for="find">Number or date<input id="find" type="text" placeholder="1234 or 2026-03-15" autocomplete="off" spellcheck="false"></label>
+      <button type="button" class="primary" id="findBtn">Find</button>
+    </div>
+  </div>
+
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
+  <main class="work">
+    <div class="board-col">
+      <p class="hover" id="hover">Point at a cell to read it. Click to select it.</p>
+      <div class="wrap" id="wrap">
+        <div class="board" id="board">
+          <div class="grid" id="grid"></div>
+          <svg class="overlay" id="overlay" aria-hidden="true"></svg>
+        </div>
+      </div>
+      <p class="legend">
+        <span><i class="sw cross"></i>Cardinal cross</span>
+        <span><i class="sw diag"></i>Diagonals (odd squares lower left)</span>
+        <span><i class="sw box sel"></i>Selected (pivot)</span>
+        <span><i class="sw box up"></i>Level above</span>
+        <span><i class="sw box down"></i>Level below</span>
+        <span><i class="sw box rise"></i>Uptrend</span>
+        <span><i class="sw box fall"></i>Downtrend</span>
+        <span><i class="sw box both"></i>On both trends</span>
+      </p>
+    </div>
+
+    <aside class="readout">
+      <section class="card" aria-labelledby="selEyebrow">
+        <p class="eyebrow" id="selEyebrow">Selected cell</p>
+        <p class="big" id="selMain"></p>
+        <p class="sub" id="selSub"></p>
+        <dl class="facts" id="facts"></dl>
+        <div class="trend" id="trendBox" hidden>
+          <p class="eyebrow">Trend</p>
+          <p class="note" id="trendNote"></p>
+          <dl class="facts" id="trendFacts"></dl>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="lvTitle">
+        <div class="card-head">
+          <h2 id="lvTitle">Levels</h2>
+          <p class="eyebrow">Square-root rule</p>
+        </div>
+        <div class="lv-controls">
+          <label class="f" for="from"><span id="fromLabel">From price</span><input id="from" type="number" step="any" inputmode="decimal"></label>
+          <label class="f" for="scale" id="scaleField">Scale
+            <select id="scale">
+              <option value="auto">Auto</option>
+              <option value="-4">÷10,000</option>
+              <option value="-3">÷1,000</option>
+              <option value="-2">÷100</option>
+              <option value="-1">÷10</option>
+              <option value="0">×1</option>
+              <option value="1">×10</option>
+              <option value="2">×100</option>
+              <option value="3">×1,000</option>
+              <option value="4">×10,000</option>
+            </select>
+          </label>
+          <label class="f" for="every">Every
+            <select id="every">
+              <option value="15">15°</option>
+              <option value="22.5">22.5°</option>
+              <option value="30">30°</option>
+              <option value="45">45°</option>
+              <option value="60">60°</option>
+              <option value="90">90°</option>
+              <option value="120">120°</option>
+              <option value="180">180°</option>
+            </select>
+          </label>
+          <label class="f" for="turns">Turns
+            <select id="turns">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+        </div>
+        <p class="note" id="scaleNote" hidden></p>
+        <div class="tbl-wrap">
+          <table class="lv">
+            <thead><tr><th scope="col">Angle</th><th scope="col"><i class="sw box up"></i> Above</th><th scope="col"><i class="sw box down"></i> Below</th></tr></thead>
+            <tbody id="lvBody"></tbody>
+          </table>
+        </div>
+        <p class="note" id="lvNote"></p>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script id="gann-core">
+/* Square of Nine math. Mirrors gannsquare/spiral.py, levels.py and square.py; tests/test_web_parity.py checks they agree. */
+var Gann = (function () {
+  "use strict";
+  var MAX_RINGS = 75;
+  var DAY = 86400000;
+  var LINE_NAMES = ["SW diagonal", "W cross", "NW diagonal", "N cross", "NE diagonal", "E cross", "SE diagonal", "S cross", "SW diagonal"];
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function ceilSqrt(n) { var r = Math.floor(Math.sqrt(n)); while (r * r > n) r--; while (r * r < n) r++; return r; }
+  function ringOf(n) { return Math.floor(ceilSqrt(n) / 2); }
+  function indexInRing(n) { var k = ringOf(n); return k ? n - (2 * k - 1) * (2 * k - 1) : 0; }
+  function coords(n) {
+    var k = ringOf(n);
+    if (!k) return [0, 0];
+    var i = indexInRing(n);
+    if (i <= 2 * k) return [-k, -k + i];
+    if (i <= 4 * k) return [-k + (i - 2 * k), k];
+    if (i <= 6 * k) return [k, k - (i - 4 * k)];
+    return [k - (i - 6 * k), -k];
+  }
+  function numberAt(x, y) {
+    var k = Math.max(Math.abs(x), Math.abs(y)), i;
+    if (!k) return 1;
+    if (x === -k && y > -k) i = y + k;
+    else if (y === k && x > -k) i = 2 * k + (x + k);
+    else if (x === k && y < k) i = 4 * k + (k - y);
+    else i = 6 * k + (k - x);
+    return (2 * k - 1) * (2 * k - 1) + i;
+  }
+  function degree(n) { var k = ringOf(n); return k ? (indexInRing(n) / (8 * k) * 360) % 360 : 0; }
+  function lineAt(n) { var k = ringOf(n); if (!k) return "centre"; var i = indexInRing(n); return i % k === 0 ? LINE_NAMES[i / k] : null; }
+  function between(n) { var k = ringOf(n); if (!k) return ["centre", "centre"]; var j = indexInRing(n) / k; return [LINE_NAMES[Math.floor(j)], LINE_NAMES[Math.ceil(j)]]; }
+  function ringsFor(count) { return Math.max(1, ringOf(Math.max(1, count))); }
+
+  function sqrtDegree(p) { return (((Math.sqrt(p) - 1) * 180) % 360 + 360) % 360; }
+  function level(p, deg) { var r = Math.sqrt(p) + deg / 180; return r < 0 ? null : r * r; }
+  function scale(p, e) { return e >= 0 ? p * Math.pow(10, e) : p / Math.pow(10, -e); }
+  function unscale(p, e) { return scale(p, -e); }
+  function autoExponent(p) { var e = 0; while (scale(p, e) < 100) e++; while (scale(p, e) >= 10000) e--; return e; }
+  function levels(p, every, turns, e) {
+    e = e || 0;
+    var s = scale(p, e), rows = [], count = Math.floor(360 * turns / every + 1e-9);
+    for (var j = 1; j <= count; j++) {
+      var deg = every * j, up = level(s, deg), down = level(s, -deg);
+      rows.push({ deg: deg, up: up === null ? null : unscale(up, e), down: down === null ? null : unscale(down, e) });
+    }
+    return rows;
+  }
+
+  function decimalsOf(x) {
+    var s = String(x).toLowerCase(), parts, frac;
+    if (s.indexOf("e") >= 0) {
+      parts = s.split("e");
+      frac = parts[0].indexOf(".") >= 0 ? parts[0].split(".")[1].replace(/0+$/, "").length : 0;
+      return Math.max(0, frac - parseInt(parts[1], 10));
+    }
+    return s.indexOf(".") >= 0 ? s.split(".")[1].replace(/0+$/, "").length : 0;
+  }
+  function spanning(start, end, step) {
+    var count = Math.floor((end - start) / step + 1e-9) + 1, rings = ringsFor(count);
+    return { rings: Math.min(rings, MAX_RINGS), capped: rings > MAX_RINGS };
+  }
+  function valueLabel(n, start, step, dec) { return (start + (n - 1) * step).toFixed(dec); }
+  function cellFor(value, start, step, cells) {
+    var n = Math.floor((value - start) / step + 0.5 + 1e-9) + 1;
+    return n >= 1 && n <= cells ? n : null;
+  }
+
+  function pad2(v) { return (v < 10 ? "0" : "") + v; }
+  function parseISO(s) {
+    var m = /^\s*(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s*$/.exec(String(s));
+    if (!m) return NaN;
+    var y = +m[1], mo = +m[2] - 1, d = +m[3], ms = Date.UTC(y, mo, d), t = new Date(ms);
+    return t.getUTCFullYear() === y && t.getUTCMonth() === mo && t.getUTCDate() === d ? ms : NaN;
+  }
+  function iso(ms) { var t = new Date(ms); return t.getUTCFullYear() + "-" + pad2(t.getUTCMonth() + 1) + "-" + pad2(t.getUTCDate()); }
+  function weekday(ms) { return (new Date(ms).getUTCDay() + 6) % 7; }
+  function addMonths(ms, add) {
+    var t = new Date(ms), m0 = t.getUTCMonth() + add, y = t.getUTCFullYear() + Math.floor(m0 / 12), m = ((m0 % 12) + 12) % 12;
+    var dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return Date.UTC(y, m, Math.min(t.getUTCDate(), dim));
+  }
+  function addWeekdays(ms, k) {
+    if (k <= 0) return ms;
+    var wd = weekday(ms);
+    if (wd >= 5) { ms += (7 - wd) * DAY; k -= 1; }
+    ms += Math.floor(k / 5) * 7 * DAY;
+    var rem = k % 5;
+    while (rem > 0) { ms += DAY; if (weekday(ms) < 5) rem--; }
+    return ms;
+  }
+  function dateAt(startMs, n, unit) {
+    var k = n - 1;
+    switch (unit) {
+      case "day": return startMs + k * DAY;
+      case "week": return startMs + 7 * k * DAY;
+      case "trading": return addWeekdays(startMs, k);
+      case "month": return addMonths(startMs, k);
+      case "year": return addMonths(startMs, 12 * k);
+    }
+    throw new Error("unknown unit " + unit);
+  }
+  function cellForDate(startMs, ms, unit, cells) {
+    if (ms < startMs || ms > dateAt(startMs, cells, unit)) return null;
+    var lo = 1, hi = cells;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (dateAt(startMs, mid, unit) < ms) lo = mid + 1; else hi = mid; }
+    if (lo > 1 && ms - dateAt(startMs, lo - 1, unit) <= dateAt(startMs, lo, unit) - ms) return lo - 1;
+    return lo;
+  }
+  function shortDate(ms, unit) {
+    var t = new Date(ms);
+    if (unit === "year") return String(t.getUTCFullYear());
+    if (unit === "month") return MONTHS[t.getUTCMonth()] + "’" + pad2(t.getUTCFullYear() % 100);
+    return (t.getUTCMonth() + 1) + "/" + t.getUTCDate();
+  }
+  function longDate(ms, unit) {
+    var t = new Date(ms);
+    if (unit === "year") return String(t.getUTCFullYear());
+    if (unit === "month") return MONTHS[t.getUTCMonth()] + " " + t.getUTCFullYear();
+    return WEEKDAYS[weekday(ms)] + " " + iso(ms);
+  }
+
+  /* Uptrend / downtrend cells from a pivot (mirrors gannsquare/trend.py). */
+  var OUTWARD = { W: [-1, 0], NW: [-1, 1], N: [0, 1], NE: [1, 1], E: [1, 0], SE: [1, -1], S: [0, -1], SW: [-1, -1] };
+  function cornerZone(k) { return k <= 1 ? 0 : Math.min(3, Math.max(1, Math.floor((k - 2) / 2))); }
+  function facing(n) {
+    var k = ringOf(n);
+    if (!k) return null;
+    var i = indexInRing(n), h = cornerZone(k);
+    var corners = [[0, "SW"], [2 * k, "NW"], [4 * k, "NE"], [6 * k, "SE"], [8 * k, "SW"]];
+    for (var j = 0; j < corners.length; j++) if (Math.abs(i - corners[j][0]) <= h) return corners[j][1];
+    return ["W", "N", "E", "S"][Math.floor((i - 1) / (2 * k))];
+  }
+  /* The two lines of a trend, each listed outward: line1 from the pivot, line2 from
+     the crossing point `cross` (grid coordinates, may fall between cells). */
+  function trendPaths(n, rings, direction) {
+    if (direction !== "up" && direction !== "down") throw new Error("direction must be 'up' or 'down'");
+    var k = ringOf(n);
+    if (!k) return { line1: [], line2: [], cross: null };
+    var p = coords(n), o = OUTWARD[facing(n)];
+    var r = direction === "up" ? [o[1], -o[0]] : [-o[1], o[0]];
+    var limit = direction === "up" ? n + 8 * k : n - 1, line1 = [], line2 = [];
+    function inside(x, y) { return Math.max(Math.abs(x), Math.abs(y)) <= rings; }
+    for (var t = 1; inside(p[0] - t * o[0], p[1] - t * o[1]); t++) {
+      var a = numberAt(p[0] - t * o[0], p[1] - t * o[1]);
+      if (a <= limit) line1.push(a);
+    }
+    var sc = (p[0] * o[1] - p[1] * o[0]) / (r[0] * o[1] - r[1] * o[0]);
+    for (var s = Math.floor(sc) + 1; inside(s * r[0], s * r[1]); s++) {
+      var b = numberAt(s * r[0], s * r[1]);
+      if (b <= limit) line2.push(b);
+    }
+    return { line1: line1, line2: line2, cross: [sc * r[0], sc * r[1]] };
+  }
+  function trendCells(n, rings, direction) {
+    var pth = trendPaths(n, rings, direction), found = {};
+    pth.line1.concat(pth.line2).forEach(function (m) { found[m] = true; });
+    return Object.keys(found).map(Number).sort(function (a, b) { return a - b; });
+  }
+
+  return {
+    MAX_RINGS: MAX_RINGS, LINE_NAMES: LINE_NAMES, cornerZone: cornerZone, facing: facing, trendCells: trendCells, trendPaths: trendPaths,
+    ringOf: ringOf, indexInRing: indexInRing, coords: coords, numberAt: numberAt, degree: degree,
+    lineAt: lineAt, between: between, ringsFor: ringsFor,
+    sqrtDegree: sqrtDegree, level: level, levels: levels, scale: scale, unscale: unscale, autoExponent: autoExponent,
+    decimalsOf: decimalsOf, spanning: spanning, valueLabel: valueLabel, cellFor: cellFor,
+    parseISO: parseISO, iso: iso, dateAt: dateAt, cellForDate: cellForDate, shortDate: shortDate, longDate: longDate
+  };
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+  var G = Gann;
+  function $(id) { return document.getElementById(id); }
+  var KEY = "gann-square-v1";
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var UNIT_WORDS = { day: "calendar days", trading: "trading days", week: "weeks", month: "months", year: "years" };
+  var DEFAULTS = {
+    start: 1, end: 441, step: 1,
+    mode: "number", startDate: new Date().getFullYear() + "-01-01", unit: "day", showNums: true,
+    lines: true, tangents: false, shade: 3, fs: 0,
+    click: "inspect", markColor: "#8fd694", marks: {},
+    sel: 172, every: 45, turns: 1, scale: "auto", trend: "both", arrows: true, lvRings: true
+  };
+
+  function readJSON(text) {
+    try { var v = JSON.parse(text); return v && typeof v === "object" ? v : {}; } catch (e) { return {}; }
+  }
+  function loadState() {
+    var s = {}, k, saved = {};
+    for (k in DEFAULTS) s[k] = DEFAULTS[k];
+    try { saved = readJSON(window.localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
+    var init = readJSON(($("gann-init") || {}).textContent || "{}");
+    [saved, init].forEach(function (src) {
+      for (var key in src) if (key in DEFAULTS && typeof src[key] === typeof DEFAULTS[key]) s[key] = src[key];
+    });
+    if ("start" in init || "end" in init || "step" in init) s.fs = 0;
+    return s;
+  }
+  var S = loadState();
+  function save() { try { window.localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
+
+  var Q = null; // the square currently on screen
+
+  function fmt(x, dec) {
+    return Number(x).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  }
+  function fmtDeg(d) { return (Math.round(d * 10) / 10) + "°"; }
+  function say(text, isError) {
+    var el = $("msg");
+    el.textContent = text || "";
+    el.classList.toggle("err", !!isError);
+  }
+  function textOn(hex) {
+    var r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+    return 0.299 * r + 0.587 * g + 0.114 * b < 150 ? "#ffffff" : "#18212b";
+  }
+
+  /* ---------- building the square ---------- */
+  function build(refit) {
+    var start = S.start, end = S.end, step = S.step;
+    if (!(isFinite(start) && isFinite(end) && isFinite(step))) return say("Enter numbers for Start, End and Step.", true);
+    if (step <= 0) return say("Step must be greater than 0.", true);
+    if (end < start) return say("End must be at least as large as Start.", true);
+    var dateMode = S.mode === "date", startMs = NaN;
+    if (dateMode) {
+      startMs = G.parseISO(S.startDate);
+      if (isNaN(startMs)) return say("Pick a centre date for the date labels.", true);
+    }
+    var sp = G.spanning(start, end, step), R = sp.rings, m = 2 * R + 1, cells = m * m;
+    var dec = Math.max(G.decimalsOf(start), G.decimalsOf(step));
+    Q = { start: start, step: step, R: R, m: m, cells: cells, dec: dec, date: dateMode, startMs: startMs, unit: S.unit, els: null, sel: null, lv: [], lvTag: {}, tr: [], trSet: {}, trPaths: {} };
+
+    var numChars = G.valueLabel(cells, start, step, dec).length;
+    var em = numChars * 0.6 + 0.6;
+    if (dateMode) {
+      var dateChars = S.unit === "month" ? 6 : S.unit === "year" ? 4 : 5;
+      var emDate = dateChars * 0.6 + 0.6;
+      em = S.showNums ? Math.max(emDate, numChars * 0.5 + 0.6, 2.6) : emDate;
+    }
+    Q.em = em;
+
+    var html = [], order = new Array(cells), idx = 0;
+    for (var y = R; y >= -R; y--) {
+      for (var x = -R; x <= R; x++) {
+        var n = G.numberAt(x, y), k = G.ringOf(n);
+        order[idx++] = n;
+        var cls = n === 1 ? "c ctr" : (S.shade > 0 && k % S.shade === 0 ? "c band" : "c");
+        var label = G.valueLabel(n, start, step, dec);
+        if (dateMode) {
+          html.push('<div class="' + cls + '"><span class="d">' + G.shortDate(G.dateAt(startMs, n, S.unit), S.unit) + "</span>" +
+            (S.showNums ? '<span class="v">' + label + "</span>" : "") + "</div>");
+        } else {
+          html.push('<div class="' + cls + '">' + label + "</div>");
+        }
+      }
+    }
+    var grid = $("grid");
+    grid.style.setProperty("--m", m);
+    grid.innerHTML = html.join("");
+    Q.els = new Array(cells + 1);
+    var kids = grid.children;
+    for (var i = 0; i < kids.length; i++) { Q.els[order[i]] = kids[i]; kids[i]._n = order[i]; }
+
+    if (refit || !S.fs) fitFont(); else applySize();
+    for (var key in S.marks) { var mn = +key; if (mn >= 1 && mn <= cells) paintMark(mn, S.marks[key]); }
+
+    var last = cells;
+    var sum = fmt(start, dec) + " → " + fmt(start + (last - 1) * step, dec) + "  ·  " + R + " rings  ·  " + cells.toLocaleString("en-US") + " cells";
+    if (dateMode) sum += "  ·  " + G.longDate(startMs, S.unit) + " → " + G.longDate(G.dateAt(startMs, last, S.unit), S.unit) + " in " + UNIT_WORDS[S.unit];
+    $("summary").textContent = sum;
+    $("ringsOut").textContent = R + " rings";
+    say(sp.capped ? "This range needs more than " + G.MAX_RINGS + " rings, so the square stops at " + fmt(start + (last - 1) * step, dec) + ". Raise Step or lower End to fit the whole range." : "");
+
+    $("fromLabel").textContent = dateMode ? "From cell number" : "From price";
+    $("scaleField").hidden = dateMode;
+    select(S.sel >= 1 && S.sel <= cells ? S.sel : 1, { scroll: true });
+  }
+
+  function applySize() {
+    var px = Math.max(8, Math.round(Q.em * S.fs));
+    Q.px = px;
+    var grid = $("grid");
+    grid.style.setProperty("--cell", px + "px");
+    grid.style.fontSize = S.fs + "px";
+    drawOverlay();
+  }
+  function fitFont() {
+    var wrap = $("wrap");
+    var maxH = parseFloat(getComputedStyle(wrap).maxHeight) || Infinity;
+    /* Prefer the room left on screen below the controls, so the whole square shows at once. */
+    var below = window.innerHeight - (wrap.getBoundingClientRect().top + window.scrollY) - 48;
+    if (below > window.innerHeight * 0.45) maxH = Math.min(maxH, below);
+    var avail = Math.min(wrap.clientWidth, maxH) - 26;
+    var px = Math.floor((avail - (Q.m - 1)) / Q.m);
+    var fs = Math.round((px / Q.em) * 2) / 2;
+    S.fs = Math.max(10, Math.min(22, fs || 13));
+    applySize();
+  }
+  function zoom(delta) {
+    S.fs = Math.max(6, Math.min(28, S.fs + delta));
+    applySize();
+    if (Q.sel) scrollToCell(Q.sel);
+    save();
+  }
+
+  function svgLine(svg, x1, y1, x2, y2, cls) {
+    var l = document.createElementNS(SVGNS, "line");
+    l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+    l.setAttribute("class", cls);
+    svg.appendChild(l);
+  }
+  function gridToPx(c) {
+    var pitch = Q.px + 1;
+    return [(c[0] + Q.R) * pitch + Q.px / 2, (Q.R - c[1]) * pitch + Q.px / 2];
+  }
+  function cellCentre(n) { return gridToPx(G.coords(n)); }
+  function arrowDefs(svg) {
+    var defs = document.createElementNS(SVGNS, "defs");
+    ["up", "down"].forEach(function (d) {
+      var mk = document.createElementNS(SVGNS, "marker");
+      mk.setAttribute("id", "ah-" + d); mk.setAttribute("viewBox", "0 0 10 10");
+      mk.setAttribute("refX", "7"); mk.setAttribute("refY", "5");
+      mk.setAttribute("markerWidth", "5"); mk.setAttribute("markerHeight", "5"); mk.setAttribute("orient", "auto");
+      var tip = document.createElementNS(SVGNS, "path");
+      tip.setAttribute("d", "M0,0 L10,5 L0,10 z"); tip.setAttribute("class", "ah-" + d);
+      mk.appendChild(tip); defs.appendChild(mk);
+    });
+    svg.appendChild(defs);
+  }
+  function arrow(svg, a, b, d, off) {
+    var vx = b[0] - a[0], vy = b[1] - a[1], len = Math.sqrt(vx * vx + vy * vy);
+    if (len < 1) return;
+    var ox = -vy / len * off, oy = vx / len * off;
+    svgLine(svg, a[0] + ox, a[1] + oy, b[0] + ox, b[1] + oy, "ar-" + d);
+    svg.lastChild.setAttribute("marker-end", "url(#ah-" + d + ")");
+  }
+  function drawOverlay() {
+    var svg = $("overlay"), W = Q.m * Q.px + (Q.m - 1), h = W / 2;
+    svg.setAttribute("width", W); svg.setAttribute("height", W);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + W);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (S.lines) {
+      svgLine(svg, 0, 0, W, W, "ln-diag");
+      svgLine(svg, W, 0, 0, W, "ln-diag");
+      svgLine(svg, h, 0, h, W, "ln-cross");
+      svgLine(svg, 0, h, W, h, "ln-cross");
+    }
+    if (S.tangents && Q.sel) {
+      var p = cellCentre(Q.sel);
+      svgLine(svg, p[0] - W, p[1] - W, p[0] + W, p[1] + W, "ln-tan");
+      svgLine(svg, p[0] - W, p[1] + W, p[0] + W, p[1] - W, "ln-tan");
+    }
+    if (S.arrows && Q.sel && (Q.trPaths.up || Q.trPaths.down)) {
+      arrowDefs(svg);
+      ["up", "down"].forEach(function (d) {
+        var pth = Q.trPaths[d], off = (d === "up" ? 1 : -1) * Q.px * 0.36;
+        if (!pth) return;
+        if (pth.line1.length) arrow(svg, cellCentre(Q.sel), cellCentre(pth.line1[pth.line1.length - 1]), d, off);
+        if (pth.line2.length) arrow(svg, gridToPx(pth.cross), cellCentre(pth.line2[pth.line2.length - 1]), d, off);
+      });
+    }
+  }
+  function scrollToCell(n) {
+    var el = Q.els[n], wrap = $("wrap");
+    if (!el) return;
+    var r = el.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    wrap.scrollLeft += (r.left + r.width / 2) - (w.left + w.width / 2);
+    wrap.scrollTop += (r.top + r.height / 2) - (w.top + w.height / 2);
+  }
+
+  /* ---------- cells: describe, select, mark ---------- */
+  function onSquare(n) {
+    if (n === 1) return "centre";
+    var line = G.lineAt(n), b = G.between(n);
+    return fmtDeg(G.degree(n)) + " · " + (line ? "on " + line : "between " + b[0] + " and " + b[1]);
+  }
+  function describe(n) {
+    var parts = ["Cell " + n.toLocaleString("en-US"), "ring " + G.ringOf(n), onSquare(n)];
+    if (Q.date) parts.push(G.longDate(G.dateAt(Q.startMs, n, Q.unit), Q.unit));
+    parts.push(fmt(+G.valueLabel(n, Q.start, Q.step, Q.dec), Q.dec));
+    if (Q.lvTag[n]) parts.push("level " + Q.lvTag[n]);
+    if (Q.trSet[n]) parts.push({ up: "uptrend cell", down: "downtrend cell", both: "on both trends" }[Q.trSet[n]]);
+    return parts.join("  ·  ");
+  }
+
+  function select(n, opt) {
+    opt = opt || {};
+    if (Q.sel && Q.els[Q.sel]) Q.els[Q.sel].classList.remove("sel");
+    Q.sel = n; S.sel = n;
+    Q.els[n].classList.add("sel");
+    $("from").value = Q.date ? String(n) : G.valueLabel(n, Q.start, Q.step, Q.dec);
+    renderCell(n);
+    renderLevels();
+    renderTrend();
+    drawOverlay();
+    if (opt.scroll) scrollToCell(n);
+    save();
+  }
+
+  function renderCell(n) {
+    var value = +G.valueLabel(n, Q.start, Q.step, Q.dec);
+    var main = Q.date ? G.longDate(G.dateAt(Q.startMs, n, Q.unit), Q.unit) : fmt(value, Q.dec);
+    $("selMain").textContent = main;
+    $("selSub").textContent = Q.date ? "Number " + fmt(value, Q.dec) : "";
+    $("selSub").hidden = !Q.date;
+    var basis = Q.date ? n : value;
+    var rows = [
+      ["Cell", n.toLocaleString("en-US")],
+      ["Ring", G.ringOf(n) + " of " + Q.R],
+      ["On the square", onSquare(n)],
+      ["√ degree", basis > 0 ? fmtDeg(G.sqrtDegree(basis)) + " of " + (Q.date ? "cell " + n : fmt(value, Q.dec)) : "—"]
+    ];
+    var dl = $("facts");
+    dl.textContent = "";
+    rows.forEach(function (r) {
+      var dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = r[0]; dd.textContent = r[1];
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+  }
+
+  function clearLevelMarks() {
+    Q.lv.forEach(function (el) { el.classList.remove("lvu", "lvd"); });
+    Q.lv = []; Q.lvTag = {};
+  }
+  function tagLevel(n, cls, tag) {
+    if (!n || n > Q.cells || !Q.els[n]) return;
+    Q.els[n].classList.add(cls);
+    Q.lv.push(Q.els[n]);
+    Q.lvTag[n] = Q.lvTag[n] ? Q.lvTag[n] + ", " + tag : tag;
+  }
+  function levelCell(x) {
+    if (x === null) return null;
+    if (Q.date) { var c = Math.floor(x + 0.5); return c >= 1 ? c : null; }
+    return G.cellFor(x, Q.start, Q.step, Q.cells);
+  }
+  function levelText(x) {
+    if (x === null) return "—";
+    if (!Q.date) return fmt(x, Q.ldec);
+    var c = Math.floor(x + 0.5);
+    if (c < 1) return "—";
+    var ms = G.dateAt(Q.startMs, c, Q.unit);
+    var d = Q.unit === "month" || Q.unit === "year" ? G.longDate(ms, Q.unit) : G.iso(ms);
+    return d + "<small>cell " + c.toLocaleString("en-US") + "</small>";
+  }
+  function renderLevels() {
+    clearLevelMarks();
+    var body = $("lvBody"), note = $("scaleNote");
+    var p = parseFloat($("from").value);
+    if (!(p > 0)) {
+      body.innerHTML = '<tr><td colspan="3">Enter a number above 0.</td></tr>';
+      note.hidden = true;
+      return;
+    }
+    var e = Q.date ? 0 : (S.scale === "auto" ? G.autoExponent(p) : parseInt(S.scale, 10));
+    Q.ldec = Math.max(2, G.decimalsOf(p));
+    if (e !== 0) {
+      note.textContent = "Scaled " + (e > 0 ? "×" : "÷") + Math.pow(10, Math.abs(e)).toLocaleString("en-US") +
+        " for the rule (" + fmt(G.scale(p, e), Math.max(0, Q.ldec - e)) + "), then scaled back.";
+      note.hidden = false;
+    } else note.hidden = true;
+    var rows = G.levels(p, S.every, S.turns, e), out = [];
+    rows.forEach(function (r) {
+      var major = Math.abs(r.deg % 90) < 1e-9;
+      out.push("<tr" + (major ? ' class="major"' : "") + "><td>" + r.deg + "°</td>" +
+        '<td class="up">' + levelText(r.up) + '</td><td class="down">' + levelText(r.down) + "</td></tr>");
+      tagLevel(levelCell(r.up), "lvu", "+" + r.deg + "°");
+      tagLevel(levelCell(r.down), "lvd", "−" + r.deg + "°");
+    });
+    body.innerHTML = out.join("");
+    $("lvNote").textContent = Q.date
+      ? "Above = (√n + angle/180)² counted in " + UNIT_WORDS[Q.unit] + " from the centre date, where n is the cell number. Rings on the square mark the levels that fall inside it."
+      : "Above = (√P + angle/180)², below = (√P − angle/180)². Rings on the square mark the levels that fall inside it.";
+  }
+
+  function cellText(n) {
+    if (!Q.date) return fmt(+G.valueLabel(n, Q.start, Q.step, Q.dec), Q.dec);
+    var ms = G.dateAt(Q.startMs, n, Q.unit);
+    return Q.unit === "month" || Q.unit === "year" ? G.longDate(ms, Q.unit) : G.iso(ms);
+  }
+  var TREND_CLASS = { up: "tru", down: "trd", both: "trb" };
+  function renderTrend() {
+    Q.tr.forEach(function (el) { el.classList.remove("tru", "trd", "trb"); });
+    Q.tr = []; Q.trSet = {}; Q.trPaths = {};
+    ["Off", "Up", "Down", "Both"].forEach(function (w) {
+      $("trend" + w).setAttribute("aria-pressed", String(S.trend === w.toLowerCase()));
+    });
+    var box = $("trendBox"), note = $("trendNote"), facts = $("trendFacts");
+    facts.textContent = "";
+    if (S.trend === "off" || !Q.sel) { box.hidden = true; return; }
+    box.hidden = false;
+    if (Q.sel === 1) { note.textContent = "The centre cell has no trend. Pick another cell."; return; }
+    var dirs = S.trend === "both" ? ["up", "down"] : [S.trend], sets = {}, shared = 0;
+    dirs.forEach(function (d) {
+      Q.trPaths[d] = G.trendPaths(Q.sel, Q.R, d);
+      sets[d] = G.trendCells(Q.sel, Q.R, d);
+      sets[d].forEach(function (n) { Q.trSet[n] = Q.trSet[n] && Q.trSet[n] !== d ? "both" : d; });
+    });
+    for (var key in Q.trSet) {
+      var el = Q.els[+key];
+      if (!el) continue;
+      el.classList.add(TREND_CLASS[Q.trSet[key]]);
+      Q.tr.push(el);
+      if (Q.trSet[key] === "both") shared++;
+    }
+    var parts = [];
+    if (sets.up) parts.push("uptrend " + sets.up.length + " cells in red");
+    if (sets.down) parts.push("downtrend " + sets.down.length + " cells in green");
+    note.textContent = "From cell " + Q.sel.toLocaleString("en-US") + ": " + parts.join(", ") +
+      (dirs.length > 1 ? ", " + shared + " on both (half red, half green)." : ".");
+    var above = function (n) { return n > Q.sel; }, below = function (n) { return n < Q.sel; };
+    var list = function (ns) { return ns.length ? ns.map(cellText).join("  \u00b7  ") : "\u2014"; };
+    var later = Q.date ? "later" : "above", earlier = Q.date ? "earlier" : "below", rows = [];
+    if (sets.up) {
+      rows.push(["\u25b2 Next " + later, sets.up.filter(above).slice(0, 5)]);
+      rows.push(["\u25b2 Next " + earlier, sets.up.filter(below).reverse().slice(0, 5)]);
+    }
+    if (sets.down) rows.push(["\u25bc Next " + earlier, sets.down.filter(below).reverse().slice(0, 5)]);
+    rows.forEach(function (r) {
+      var dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = r[0]; dd.textContent = list(r[1]);
+      facts.appendChild(dt); facts.appendChild(dd);
+    });
+  }
+
+  function paintMark(n, color) {
+    var el = Q.els[n];
+    if (!el) return;
+    el.style.backgroundColor = color;
+    el.style.color = textOn(color);
+  }
+  function toggleMark(n) {
+    if (S.marks[n]) {
+      delete S.marks[n];
+      Q.els[n].style.backgroundColor = "";
+      Q.els[n].style.color = "";
+    } else {
+      S.marks[n] = S.markColor;
+      paintMark(n, S.markColor);
+    }
+    save();
+  }
+
+  function find() {
+    var q = $("find").value.trim(), n;
+    if (!q) return;
+    if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(q)) {
+      if (!Q.date) return say("Switch “Cells show” to Dates to find a date.", true);
+      var ms = G.parseISO(q);
+      if (isNaN(ms)) return say(q + " is not a real date.", true);
+      n = G.cellForDate(Q.startMs, ms, Q.unit, Q.cells);
+      if (n === null) return say(q + " is outside this square (" + G.iso(Q.startMs) + " to " + G.iso(G.dateAt(Q.startMs, Q.cells, Q.unit)) + ").", true);
+    } else {
+      var v = parseFloat(q.replace(/,/g, ""));
+      if (!isFinite(v)) return say("Type a number such as 1234 or a date such as 2026-03-15.", true);
+      n = G.cellFor(v, Q.start, Q.step, Q.cells);
+      if (n === null) {
+        return say(fmt(v, G.decimalsOf(v)) + " is outside this square (" + fmt(Q.start, Q.dec) + " to " +
+          fmt(Q.start + (Q.cells - 1) * Q.step, Q.dec) + "). Change Start or End to include it.", true);
+      }
+    }
+    say("");
+    select(n, { scroll: true });
+  }
+
+  /* ---------- wiring ---------- */
+  function syncControls() {
+    $("start").value = S.start; $("end").value = S.end; $("step").value = S.step;
+    $("startDate").value = S.startDate; $("unit").value = S.unit; $("showNums").checked = S.showNums;
+    $("lines").checked = S.lines; $("tangents").checked = S.tangents; $("shade").value = String(S.shade);
+    $("arrows").checked = S.arrows; $("lvRings").checked = S.lvRings;
+    $("grid").classList.toggle("nolv", !S.lvRings);
+    $("markColor").value = S.markColor; $("scale").value = S.scale;
+    $("every").value = String(S.every); $("turns").value = String(S.turns);
+    $("modeNumber").setAttribute("aria-pressed", String(S.mode !== "date"));
+    $("modeDate").setAttribute("aria-pressed", String(S.mode === "date"));
+    $("dateOpts").hidden = S.mode !== "date";
+    $("clickInspect").setAttribute("aria-pressed", String(S.click !== "mark"));
+    $("clickMark").setAttribute("aria-pressed", String(S.click === "mark"));
+  }
+  function onNum(id) {
+    $(id).addEventListener("change", function () { S[id] = parseFloat(this.value); build(true); save(); });
+  }
+  onNum("start"); onNum("end"); onNum("step");
+  function setMode(mode) { S.mode = mode; syncControls(); build(true); save(); }
+  $("modeNumber").addEventListener("click", function () { setMode("number"); });
+  $("modeDate").addEventListener("click", function () { setMode("date"); });
+  $("startDate").addEventListener("change", function () { S.startDate = this.value; build(false); save(); });
+  $("unit").addEventListener("change", function () { S.unit = this.value; build(true); save(); });
+  $("showNums").addEventListener("change", function () { S.showNums = this.checked; build(true); save(); });
+  $("lines").addEventListener("change", function () { S.lines = this.checked; drawOverlay(); save(); });
+  $("tangents").addEventListener("change", function () { S.tangents = this.checked; drawOverlay(); save(); });
+  $("shade").addEventListener("change", function () { S.shade = parseInt(this.value, 10); build(false); save(); });
+  $("zoomIn").addEventListener("click", function () { zoom(1); });
+  $("zoomOut").addEventListener("click", function () { zoom(-1); });
+  $("fit").addEventListener("click", function () { fitFont(); if (Q.sel) scrollToCell(Q.sel); save(); });
+  function setClick(mode) { S.click = mode; syncControls(); save(); }
+  $("clickInspect").addEventListener("click", function () { setClick("inspect"); });
+  $("clickMark").addEventListener("click", function () { setClick("mark"); });
+  $("markColor").addEventListener("input", function () { S.markColor = this.value; save(); });
+  $("clearMarks").addEventListener("click", function () {
+    for (var key in S.marks) { var el = Q.els[+key]; if (el) { el.style.backgroundColor = ""; el.style.color = ""; } }
+    S.marks = {}; save();
+  });
+  function setTrend(t) { S.trend = t; renderTrend(); drawOverlay(); save(); }
+  $("trendOff").addEventListener("click", function () { setTrend("off"); });
+  $("trendUp").addEventListener("click", function () { setTrend("up"); });
+  $("trendDown").addEventListener("click", function () { setTrend("down"); });
+  $("trendBoth").addEventListener("click", function () { setTrend("both"); });
+  $("arrows").addEventListener("change", function () { S.arrows = this.checked; drawOverlay(); save(); });
+  $("lvRings").addEventListener("change", function () { S.lvRings = this.checked; syncControls(); save(); });
+  $("findBtn").addEventListener("click", find);
+  $("find").addEventListener("keydown", function (e) { if (e.key === "Enter") find(); });
+  $("from").addEventListener("input", renderLevels);
+  $("scale").addEventListener("change", function () { S.scale = this.value; renderLevels(); save(); });
+  $("every").addEventListener("change", function () { S.every = parseFloat(this.value); renderLevels(); save(); });
+  $("turns").addEventListener("change", function () { S.turns = parseInt(this.value, 10); renderLevels(); save(); });
+
+  var grid = $("grid");
+  grid.addEventListener("mouseover", function (e) {
+    var el = e.target.closest ? e.target.closest(".c") : null;
+    if (el && el._n) $("hover").textContent = describe(el._n);
+  });
+  grid.addEventListener("click", function (e) {
+    var el = e.target.closest ? e.target.closest(".c") : null;
+    if (!el || !el._n) return;
+    if (S.click === "mark") toggleMark(el._n);
+    else select(el._n);
+  });
+
+  syncControls();
+  build(!S.fs);
+})();
+</script>
+
+</body>
+</html>

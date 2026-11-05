@@ -57,3 +57,15 @@ gann square --end 81 --mark 50 --trend both  # up / down / both trends from pivo
 gann square --end 25 --dates 2026-01-01 --unit month
 gann time 2026-01-02 --unit trading # dates on the crosses/diagonals from a pivot
 ```
+
+## Publishing it as a website
+
+`docs/gann-square/index.html` (at the repo root) is a ready-to-serve copy of the page.
+With GitHub Pages set to deploy `main` from `/docs`, it is live at
+`https://zytalan.github.io/alan/gann-square/`.
+
+After changing the page, refresh that copy (a test fails if you forget):
+
+```powershell
+gann render -o ../docs/gann-square/index.html
+```
