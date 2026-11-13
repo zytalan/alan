@@ -3,4 +3,4 @@
 Modules land phase by phase; see ``docs/PLAN.md``.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -167,13 +167,12 @@
   .c:hover { box-shadow: inset 0 0 0 1px var(--ink); }
   .c.lvu { box-shadow: inset 0 0 0 2px var(--up); font-weight: 600; }
   .c.lvd { box-shadow: inset 0 0 0 2px var(--down); font-weight: 600; }
-  .c.tru, .c.trd, .c.trb { color: var(--on-trend) !important; font-weight: 700; text-shadow: 0 0 2px rgba(0, 0, 0, 0.35); }
+  .c.tru, .c.trd { color: var(--on-trend) !important; font-weight: 700; text-shadow: 0 0 2px rgba(0, 0, 0, 0.35); }
   .c.tru { background: var(--rise) !important; }
   .c.trd { background: var(--fall) !important; }
-  .c.trb { background: linear-gradient(135deg, var(--rise) 0 50%, var(--fall) 50% 100%) !important; }
-  .c.tru .v, .c.trd .v, .c.trb .v { color: inherit; opacity: 0.85; }
+  .c.tru .v, .c.trd .v { color: inherit; opacity: 0.85; }
   .grid.nolv .c.lvu, .grid.nolv .c.lvd { box-shadow: none; font-weight: inherit; }
-  .c.lvu.tru, .c.lvu.trd, .c.lvu.trb, .c.lvd.tru, .c.lvd.trd, .c.lvd.trb { box-shadow: inset 0 0 0 2px var(--on-trend); }
+  .c.lvu.tru, .c.lvu.trd, .c.lvd.tru, .c.lvd.trd { box-shadow: inset 0 0 0 2px var(--on-trend); }
   .c.sel, .c.sel:hover { background: var(--select) !important; color: var(--on-select) !important; font-weight: 700; box-shadow: inset 0 0 0 3px var(--ink); text-shadow: none; }
   .c.sel .v { color: var(--on-select); }
   .overlay { position: absolute; left: 0; top: 0; pointer-events: none; overflow: hidden; }
@@ -197,7 +196,6 @@
   .sw.sel { background: var(--select); border-color: var(--select); }
   .sw.rise { background: var(--rise); border-color: var(--rise); }
   .sw.fall { background: var(--fall); border-color: var(--fall); }
-  .sw.both { background: linear-gradient(135deg, var(--rise) 0 50%, var(--fall) 50% 100%); border-color: transparent; }
   .sw.sel { box-shadow: inset 0 0 0 2px var(--ink); }
   .trend { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
   .trend-grp { border-color: var(--ink-2); }
@@ -349,9 +347,8 @@
         <span><i class="sw box sel"></i>Selected (pivot)</span>
         <span><i class="sw box up"></i>Level above</span>
         <span><i class="sw box down"></i>Level below</span>
-        <span><i class="sw box rise"></i>Uptrend</span>
-        <span><i class="sw box fall"></i>Downtrend</span>
-        <span><i class="sw box both"></i>On both trends</span>
+        <span><i class="sw box rise"></i>Uptrend (above the pivot)</span>
+        <span><i class="sw box fall"></i>Downtrend (below the pivot)</span>
       </p>
     </div>
 
@@ -557,26 +554,30 @@ var Gann = (function () {
     for (var j = 0; j < corners.length; j++) if (Math.abs(i - corners[j][0]) <= h) return corners[j][1];
     return ["W", "N", "E", "S"][Math.floor((i - 1) / (2 * k))];
   }
-  /* The two lines of a trend, each listed outward: line1 from the pivot, line2 from
-     the crossing point `cross` (grid coordinates, may fall between cells). */
+  /* The two lines of a trend, each listed away from where it starts. An uptrend keeps
+     the cells numbered above the pivot (line 1 runs outward, line 2 is the centre line
+     90° clockwise); a downtrend keeps the cells below it (line 1 runs inward, line 2 is
+     the centre line 90° counter-clockwise). */
   function trendPaths(n, rings, direction) {
     if (direction !== "up" && direction !== "down") throw new Error("direction must be 'up' or 'down'");
     var k = ringOf(n);
-    if (!k) return { line1: [], line2: [], cross: null };
-    var p = coords(n), o = OUTWARD[facing(n)];
-    var r = direction === "up" ? [o[1], -o[0]] : [-o[1], o[0]];
-    var limit = direction === "up" ? n + 8 * k : n - 1, line1 = [], line2 = [];
+    if (!k) return { line1: [], line2: [] };
+    var up = direction === "up", p = coords(n), o = OUTWARD[facing(n)];
+    var dir = up ? o : [-o[0], -o[1]];
+    var r = up ? [o[1], -o[0]] : [-o[1], o[0]];
+    var line1 = [], line2 = [];
+    function keep(m) { return up ? m > n : m < n; }
     function inside(x, y) { return Math.max(Math.abs(x), Math.abs(y)) <= rings; }
-    for (var t = 1; inside(p[0] - t * o[0], p[1] - t * o[1]); t++) {
-      var a = numberAt(p[0] - t * o[0], p[1] - t * o[1]);
-      if (a <= limit) line1.push(a);
+    for (var t = 1; inside(p[0] + t * dir[0], p[1] + t * dir[1]); t++) {
+      var a = numberAt(p[0] + t * dir[0], p[1] + t * dir[1]);
+      if (keep(a)) line1.push(a);
     }
     var sc = (p[0] * o[1] - p[1] * o[0]) / (r[0] * o[1] - r[1] * o[0]);
     for (var s = Math.floor(sc) + 1; inside(s * r[0], s * r[1]); s++) {
       var b = numberAt(s * r[0], s * r[1]);
-      if (b <= limit) line2.push(b);
+      if (keep(b)) line2.push(b);
     }
-    return { line1: line1, line2: line2, cross: [sc * r[0], sc * r[1]] };
+    return { line1: line1, line2: line2 };
   }
   function trendCells(n, rings, direction) {
     var pth = trendPaths(n, rings, direction), found = {};
@@ -785,7 +786,7 @@ var Gann = (function () {
         var pth = Q.trPaths[d], off = (d === "up" ? 1 : -1) * Q.px * 0.36;
         if (!pth) return;
         if (pth.line1.length) arrow(svg, cellCentre(Q.sel), cellCentre(pth.line1[pth.line1.length - 1]), d, off);
-        if (pth.line2.length) arrow(svg, gridToPx(pth.cross), cellCentre(pth.line2[pth.line2.length - 1]), d, off);
+        if (pth.line2.length > 1) arrow(svg, cellCentre(pth.line2[0]), cellCentre(pth.line2[pth.line2.length - 1]), d, off);
       });
     }
   }
@@ -808,7 +809,7 @@ var Gann = (function () {
     if (Q.date) parts.push(G.longDate(G.dateAt(Q.startMs, n, Q.unit), Q.unit));
     parts.push(fmt(+G.valueLabel(n, Q.start, Q.step, Q.dec), Q.dec));
     if (Q.lvTag[n]) parts.push("level " + Q.lvTag[n]);
-    if (Q.trSet[n]) parts.push({ up: "uptrend cell", down: "downtrend cell", both: "on both trends" }[Q.trSet[n]]);
+    if (Q.trSet[n]) parts.push(Q.trSet[n] === "up" ? "uptrend cell" : "downtrend cell");
     return parts.join("  ·  ");
   }
 
@@ -907,9 +908,9 @@ var Gann = (function () {
     var ms = G.dateAt(Q.startMs, n, Q.unit);
     return Q.unit === "month" || Q.unit === "year" ? G.longDate(ms, Q.unit) : G.iso(ms);
   }
-  var TREND_CLASS = { up: "tru", down: "trd", both: "trb" };
+  var TREND_CLASS = { up: "tru", down: "trd" };
   function renderTrend() {
-    Q.tr.forEach(function (el) { el.classList.remove("tru", "trd", "trb"); });
+    Q.tr.forEach(function (el) { el.classList.remove("tru", "trd"); });
     Q.tr = []; Q.trSet = {}; Q.trPaths = {};
     ["Off", "Up", "Down", "Both"].forEach(function (w) {
       $("trend" + w).setAttribute("aria-pressed", String(S.trend === w.toLowerCase()));
@@ -919,32 +920,26 @@ var Gann = (function () {
     if (S.trend === "off" || !Q.sel) { box.hidden = true; return; }
     box.hidden = false;
     if (Q.sel === 1) { note.textContent = "The centre cell has no trend. Pick another cell."; return; }
-    var dirs = S.trend === "both" ? ["up", "down"] : [S.trend], sets = {}, shared = 0;
+    var dirs = S.trend === "both" ? ["up", "down"] : [S.trend], sets = {};
     dirs.forEach(function (d) {
       Q.trPaths[d] = G.trendPaths(Q.sel, Q.R, d);
       sets[d] = G.trendCells(Q.sel, Q.R, d);
-      sets[d].forEach(function (n) { Q.trSet[n] = Q.trSet[n] && Q.trSet[n] !== d ? "both" : d; });
+      sets[d].forEach(function (n) {
+        var el = Q.els[n];
+        if (!el) return;
+        el.classList.add(TREND_CLASS[d]);
+        Q.tr.push(el); Q.trSet[n] = d;
+      });
     });
-    for (var key in Q.trSet) {
-      var el = Q.els[+key];
-      if (!el) continue;
-      el.classList.add(TREND_CLASS[Q.trSet[key]]);
-      Q.tr.push(el);
-      if (Q.trSet[key] === "both") shared++;
-    }
-    var parts = [];
-    if (sets.up) parts.push("uptrend " + sets.up.length + " cells in red");
-    if (sets.down) parts.push("downtrend " + sets.down.length + " cells in green");
-    note.textContent = "From cell " + Q.sel.toLocaleString("en-US") + ": " + parts.join(", ") +
-      (dirs.length > 1 ? ", " + shared + " on both (half red, half green)." : ".");
-    var above = function (n) { return n > Q.sel; }, below = function (n) { return n < Q.sel; };
+    var later = Q.date ? "later" : "above", earlier = Q.date ? "earlier" : "below", parts = [];
+    if (sets.up) parts.push("uptrend " + sets.up.length + " cells " + later + " in red");
+    if (sets.down) parts.push("downtrend " + sets.down.length + " cells " + earlier + " in green");
+    note.textContent = "From cell " + Q.sel.toLocaleString("en-US") + ": " + parts.join(", ") + "." +
+      (sets.up && !sets.up.length ? " Nothing lies further out; raise End to see the uptrend." : "");
     var list = function (ns) { return ns.length ? ns.map(cellText).join("  \u00b7  ") : "\u2014"; };
-    var later = Q.date ? "later" : "above", earlier = Q.date ? "earlier" : "below", rows = [];
-    if (sets.up) {
-      rows.push(["\u25b2 Next " + later, sets.up.filter(above).slice(0, 5)]);
-      rows.push(["\u25b2 Next " + earlier, sets.up.filter(below).reverse().slice(0, 5)]);
-    }
-    if (sets.down) rows.push(["\u25bc Next " + earlier, sets.down.filter(below).reverse().slice(0, 5)]);
+    var rows = [];
+    if (sets.up) rows.push(["\u25b2 Next " + later, sets.up.slice(0, 5)]);
+    if (sets.down) rows.push(["\u25bc Next " + earlier, sets.down.slice().reverse().slice(0, 5)]);
     rows.forEach(function (r) {
       var dt = document.createElement("dt"), dd = document.createElement("dd");
       dt.textContent = r[0]; dd.textContent = list(r[1]);

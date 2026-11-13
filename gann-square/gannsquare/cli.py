@@ -168,8 +168,6 @@ def square(
             style = ""
             if n == marked and trend:
                 style = "reverse bold"
-            elif n in up and n in down:
-                style = "bold black on yellow"
             elif n in up:
                 style = "bold white on red"
             elif n in down:
