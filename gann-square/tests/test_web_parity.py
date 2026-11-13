@@ -144,3 +144,14 @@ def test_trend_paths_cover_trend_cells():
     got = run_js([["trendPaths", list(c)] for c in cases])
     for (n, rings, d), paths in zip(cases, got):
         assert sorted(set(paths["line1"] + paths["line2"])) == trend_cells(n, rings, d)
+
+
+def test_dated_trends_match():
+    cases = [
+        (n, rings, d, True)
+        for rings in (3, 10)
+        for n in range(2, (2 * rings + 1) ** 2 + 1, 11)
+        for d in ("up", "down")
+    ]
+    got = run_js([["trendCells", list(c)] for c in cases])
+    assert got == [trend_cells(n, r, d, after=a) for n, r, d, a in cases]

@@ -340,8 +340,8 @@
         <span><i class="sw box sel"></i>Selected (pivot)</span>
         <span><i class="sw box up"></i>Level above</span>
         <span><i class="sw box down"></i>Level below</span>
-        <span><i class="sw box rise"></i>Uptrend (above the pivot)</span>
-        <span><i class="sw box fall"></i>Downtrend (below the pivot)</span>
+        <span><i class="sw box rise"></i><span id="lgUp">Uptrend (above the pivot)</span></span>
+        <span><i class="sw box fall"></i><span id="lgDown">Downtrend (below the pivot)</span></span>
       </p>
     </div>
 
@@ -550,8 +550,9 @@ var Gann = (function () {
   /* The two lines of a trend, each listed away from where it starts. An uptrend keeps
      the cells numbered above the pivot (line 1 runs outward, line 2 is the centre line
      90° clockwise); a downtrend keeps the cells below it (line 1 runs inward, line 2 is
-     the centre line 90° counter-clockwise). */
-  function trendPaths(n, rings, direction) {
+     the centre line 90° counter-clockwise). With `after` (date squares) both keep only
+     the cells after the pivot, because time only runs forward. */
+  function trendPaths(n, rings, direction, after) {
     if (direction !== "up" && direction !== "down") throw new Error("direction must be 'up' or 'down'");
     var k = ringOf(n);
     if (!k) return { line1: [], line2: [] };
@@ -559,7 +560,7 @@ var Gann = (function () {
     var dir = up ? o : [-o[0], -o[1]];
     var r = up ? [o[1], -o[0]] : [-o[1], o[0]];
     var line1 = [], line2 = [];
-    function keep(m) { return up ? m > n : m < n; }
+    function keep(m) { return up || after ? m > n : m < n; }
     function inside(x, y) { return Math.max(Math.abs(x), Math.abs(y)) <= rings; }
     for (var t = 1; inside(p[0] + t * dir[0], p[1] + t * dir[1]); t++) {
       var a = numberAt(p[0] + t * dir[0], p[1] + t * dir[1]);
@@ -572,8 +573,8 @@ var Gann = (function () {
     }
     return { line1: line1, line2: line2 };
   }
-  function trendCells(n, rings, direction) {
-    var pth = trendPaths(n, rings, direction), found = {};
+  function trendCells(n, rings, direction, after) {
+    var pth = trendPaths(n, rings, direction, after), found = {};
     pth.line1.concat(pth.line2).forEach(function (m) { found[m] = true; });
     return Object.keys(found).map(Number).sort(function (a, b) { return a - b; });
   }
@@ -695,6 +696,8 @@ var Gann = (function () {
     say(sp.capped ? "This range needs more than " + G.MAX_RINGS + " rings, so the square stops at " + fmt(start + (last - 1) * step, dec) + ". Raise Step or lower End to fit the whole range." : "");
 
     $("fromLabel").textContent = dateMode ? "From cell number" : "From price";
+    $("lgUp").textContent = dateMode ? "Uptrend (later dates)" : "Uptrend (above the pivot)";
+    $("lgDown").textContent = dateMode ? "Downtrend (later dates)" : "Downtrend (below the pivot)";
     $("scaleField").hidden = dateMode;
     select(S.sel >= 1 && S.sel <= cells ? S.sel : 1, { scroll: true });
   }
@@ -915,8 +918,8 @@ var Gann = (function () {
     if (Q.sel === 1) { note.textContent = "The centre cell has no trend. Pick another cell."; return; }
     var dirs = S.trend === "both" ? ["up", "down"] : [S.trend], sets = {};
     dirs.forEach(function (d) {
-      Q.trPaths[d] = G.trendPaths(Q.sel, Q.R, d);
-      sets[d] = G.trendCells(Q.sel, Q.R, d);
+      Q.trPaths[d] = G.trendPaths(Q.sel, Q.R, d, Q.date);
+      sets[d] = G.trendCells(Q.sel, Q.R, d, Q.date);
       sets[d].forEach(function (n) {
         var el = Q.els[n];
         if (!el) return;
@@ -924,15 +927,21 @@ var Gann = (function () {
         Q.tr.push(el); Q.trSet[n] = d;
       });
     });
-    var later = Q.date ? "later" : "above", earlier = Q.date ? "earlier" : "below", parts = [];
-    if (sets.up) parts.push("uptrend " + sets.up.length + " cells " + later + " in red");
-    if (sets.down) parts.push("downtrend " + sets.down.length + " cells " + earlier + " in green");
-    note.textContent = "From cell " + Q.sel.toLocaleString("en-US") + ": " + parts.join(", ") + "." +
-      (sets.up && !sets.up.length ? " Nothing lies further out; raise End to see the uptrend." : "");
+    /* Numbers: up = above the pivot, down = below. Dates: both look forward in time. */
+    var parts = [], empty = [];
+    if (sets.up) parts.push("uptrend " + sets.up.length + (Q.date ? " later dates" : " cells above") + " in red");
+    if (sets.down) parts.push("downtrend " + sets.down.length + (Q.date ? " later dates" : " cells below") + " in green");
+    if (sets.up && !sets.up.length) empty.push("uptrend");
+    if (sets.down && !sets.down.length) empty.push("downtrend");
+    note.textContent = "From " + (Q.date ? G.longDate(G.dateAt(Q.startMs, Q.sel, Q.unit), Q.unit) : "cell " + Q.sel.toLocaleString("en-US")) +
+      ": " + parts.join(", ") + "." + (Q.date ? " On dates both trends look forward." : "") +
+      (empty.length ? " Raise End to see more of the " + empty.join(" and ") + "." : "");
     var list = function (ns) { return ns.length ? ns.map(cellText).join("  \u00b7  ") : "\u2014"; };
     var rows = [];
-    if (sets.up) rows.push(["\u25b2 Next " + later, sets.up.slice(0, 5)]);
-    if (sets.down) rows.push(["\u25bc Next " + earlier, sets.down.slice().reverse().slice(0, 5)]);
+    if (sets.up) rows.push([Q.date ? "\u25b2 Next dates" : "\u25b2 Next above", sets.up.slice(0, 5)]);
+    if (sets.down) {
+      rows.push(Q.date ? ["\u25bc Next dates", sets.down.slice(0, 5)] : ["\u25bc Next below", sets.down.slice().reverse().slice(0, 5)]);
+    }
     rows.forEach(function (r) {
       var dt = document.createElement("dt"), dd = document.createElement("dd");
       dt.textContent = r[0]; dd.textContent = list(r[1]);

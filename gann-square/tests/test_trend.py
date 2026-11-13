@@ -73,6 +73,21 @@ def test_paths_run_away_from_the_pivot():
     assert line2 == [116, 163]
 
 
+def test_dates_look_forward_for_both_trends():
+    # 172's downtrend line crosses the square: its later dates are on the far side
+    # (208, 269, 338, 415) and further down the S cross (218, 281, 352, 431).
+    assert trend_cells(172, 10, "down", after=True) == [208, 218, 269, 281, 338, 352, 415, 431]
+    line1, line2 = trend_paths(172, 10, "down", after=True)
+    assert line1 == [208, 269, 338, 415] and line2 == [218, 281, 352, 431]
+    rings = 10
+    for n in range(2, (2 * rings + 1) ** 2 + 1):
+        up = trend_cells(n, rings, "up", after=True)
+        down = trend_cells(n, rings, "down", after=True)
+        assert up == trend_cells(n, rings, "up"), n  # the uptrend already looks forward
+        assert all(m > n for m in up + down), n
+        assert not set(up) & set(down), n  # the two trends never share a date
+
+
 def test_corner_zone():
     assert [corner_zone(k) for k in range(1, 12)] == [0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3]
 

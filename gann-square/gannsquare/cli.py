@@ -159,8 +159,13 @@ def square(
     marked = sq.cell_for(mark) if mark is not None else None
     if mark is not None and marked is None:
         _fail(f"{mark:g} is not on this square.")
-    up = set(trend_cells(marked, sq.rings, "up")) if trend in ("up", "both") else set()
-    down = set(trend_cells(marked, sq.rings, "down")) if trend in ("down", "both") else set()
+    after = d0 is not None  # on dates both trends look forward in time
+    up = set(trend_cells(marked, sq.rings, "up", after=after)) if trend in ("up", "both") else set()
+    down = (
+        set(trend_cells(marked, sq.rings, "down", after=after))
+        if trend in ("down", "both")
+        else set()
+    )
     out = Text()
     for row in spiral.grid(sq.rings):
         for col, n in enumerate(row):

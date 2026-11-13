@@ -37,7 +37,9 @@ On the page:
   selected cell is the pivot (yellow, thick border). *Up* fills the cells above the
   pivot in red (bigger numbers, later dates): straight outward from the pivot, and
   along the centre line 90° clockwise of it. *Down* fills the cells below the pivot in
-  green: straight inward, and along the centre line 90° counter-clockwise. Arrows along
+  green: straight inward, and along the centre line 90° counter-clockwise. When cells
+  show dates, both trends look forward in time: Up and Down each mark only dates after
+  the pivot (the next possible resistance or support dates). Arrows along
   the cell edges show which way each runs; switch them off with *Arrows*. The panel
   lists the nearest marked values. The choice stays on while you click other cells.
 - **Find** jumps to a number or a date (YYYY-MM-DD).

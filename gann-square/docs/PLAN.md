@@ -49,6 +49,11 @@ one deliberate change: up means bigger numbers, down means smaller.
    the same centre line towards the side 90° clockwise (the way the numbers grow).
    Cells above the pivot are kept.
 
+4. On a square of dates, both trends keep only dates after the pivot, because time
+   only runs forward and the useful answer is the next support or resistance date.
+   The uptrend's cells already are; the downtrend shows where its line reaches the
+   far side of the square and further out along its centre line.
+
 The site's own 上升趋势 also runs inward and keeps everything up to one turn past
 the pivot, so about 90% of what it marks is below the pivot. That read as
 reversed, so the uptrend here only marks cells above the pivot.

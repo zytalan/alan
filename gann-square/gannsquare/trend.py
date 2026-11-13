@@ -15,6 +15,12 @@ and a downtrend only cells numbered below it.
    line 2 is the same centre line towards the side 90° clockwise of the pivot, the
    way the numbers grow. Cells numbered above the pivot are kept.
 
+On a square of dates (``after=True``) both trends keep only the cells after the
+pivot instead, because time only runs forward: the next support or resistance
+date is always a later one. The uptrend is unchanged by this; the downtrend keeps
+the part of its lines past the pivot, mostly where line 1 reaches the far side of
+the square and further out along line 2.
+
 The site's own 上升趋势 runs inward too and keeps every cell up to one turn past
 the pivot, so most of what it marks is below the pivot.
 """
@@ -54,8 +60,13 @@ def facing(n: int) -> str | None:
     return ("W", "N", "E", "S")[(i - 1) // (2 * k)]
 
 
-def trend_paths(n: int, rings: int, direction: str) -> tuple[list[int], list[int]]:
-    """The two lines of a trend from pivot ``n``, each listed away from where it starts."""
+def trend_paths(
+    n: int, rings: int, direction: str, *, after: bool = False
+) -> tuple[list[int], list[int]]:
+    """The two lines of a trend from pivot ``n``, each listed away from where it starts.
+
+    ``after=True`` keeps only cells after the pivot for both directions (dates).
+    """
     if direction not in ("up", "down"):
         raise ValueError("direction must be 'up' or 'down'")
     k = ring_of(n)
@@ -67,7 +78,7 @@ def trend_paths(n: int, rings: int, direction: str) -> tuple[list[int], list[int
     rx, ry = (oy, -ox) if up else (-oy, ox)  # 90° clockwise / counter-clockwise
 
     def keep(m: int) -> bool:
-        return m > n if up else m < n
+        return m > n if up or after else m < n
 
     def inside(x: int, y: int) -> bool:
         return max(abs(x), abs(y)) <= rings
@@ -89,7 +100,7 @@ def trend_paths(n: int, rings: int, direction: str) -> tuple[list[int], list[int
     return line1, line2
 
 
-def trend_cells(n: int, rings: int, direction: str) -> list[int]:
+def trend_cells(n: int, rings: int, direction: str, *, after: bool = False) -> list[int]:
     """Cells marked by an ``"up"`` or ``"down"`` trend from pivot ``n`` on a square of ``rings``."""
-    line1, line2 = trend_paths(n, rings, direction)
+    line1, line2 = trend_paths(n, rings, direction, after=after)
     return sorted(set(line1) | set(line2))
