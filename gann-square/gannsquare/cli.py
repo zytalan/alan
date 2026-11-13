@@ -159,10 +159,10 @@ def square(
     marked = sq.cell_for(mark) if mark is not None else None
     if mark is not None and marked is None:
         _fail(f"{mark:g} is not on this square.")
-    after = d0 is not None  # on dates both trends look forward in time
-    up = set(trend_cells(marked, sq.rings, "up", after=after)) if trend in ("up", "both") else set()
+    full = d0 is not None  # on dates the trend lines run to the edge of the square
+    up = set(trend_cells(marked, sq.rings, "up", full=full)) if trend in ("up", "both") else set()
     down = (
-        set(trend_cells(marked, sq.rings, "down", after=after))
+        set(trend_cells(marked, sq.rings, "down", full=full))
         if trend in ("down", "both")
         else set()
     )
@@ -173,10 +173,12 @@ def square(
             style = ""
             if n == marked and trend:
                 style = "reverse bold"
-            elif n in up:
-                style = "bold white on red"
-            elif n in down:
-                style = "bold white on green"
+            elif n in up or n in down:
+                colour = "yellow" if n in up and n in down else "red" if n in up else "green"
+                if full and n < marked:
+                    style = colour  # earlier dates on the line: coloured text only
+                else:
+                    style = f"bold {'black' if colour == 'yellow' else 'white'} on {colour}"
             elif n == 1:
                 style = "bold"
             elif trend:

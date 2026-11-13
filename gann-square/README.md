@@ -34,14 +34,14 @@ On the page:
   every 45° (or 15°–180°), and rings those levels on the square: red above, green
   below. Switch to *Marks it* to color cells instead.
 - **Trend (上升/下降趋势)**: in the toolbar, choose *Up*, *Down*, *Both* or *Off*. The
-  selected cell is the pivot (yellow, thick border). *Up* fills the cells above the
-  pivot in red (bigger numbers, later dates): straight outward from the pivot, and
-  along the centre line 90° clockwise of it. *Down* fills the cells below the pivot in
-  green: straight inward, and along the centre line 90° counter-clockwise. When cells
-  show dates, both trends look forward in time: Up and Down each mark only dates after
-  the pivot (the next possible resistance or support dates). Arrows along
-  the cell edges show which way each runs; switch them off with *Arrows*. The panel
-  lists the nearest marked values. The choice stays on while you click other cells.
+  selected cell is the pivot (yellow, thick border). The cells marked are the ones
+  ganninvestor.com marks: a line from the pivot straight across the square, plus the
+  centre line at right angles to it (90° clockwise for Up, counter-clockwise for Down).
+  Uptrend cells are solid red, downtrend solid green, cells on both half and half.
+  When cells show dates, the lines run on to the edge of the square so the dates after
+  the pivot show too; those are solid, and the earlier part of each line is pale.
+  Arrows along the cell edges show which way each line runs (*Arrows* switches them
+  off). The panel lists the next marked values, or the next dates after the pivot.
 - **Find** jumps to a number or a date (YYYY-MM-DD).
 - **View**: angle lines, diagonals through the pivot, level rings on/off, ring shading,
   zoom. *Fit* sizes the cells so the whole square fits on screen.

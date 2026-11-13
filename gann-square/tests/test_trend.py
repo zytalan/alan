@@ -1,11 +1,9 @@
 import pytest
 
-from gannsquare.spiral import coords, number_at
+from gannsquare.spiral import coords
 from gannsquare.trend import OUTWARD, corner_zone, facing, trend_cells, trend_paths
 
-# (pivot, the site's 上升趋势 cells, 下降趋势 cells) as marked by ganninvestor.com on a
-# 14-ring square. Downtrends here match the site; uptrends deliberately do not (the site's
-# uptrend is kept for reference: most of its cells are below the pivot).
+# (pivot, 上升趋势 cells, 下降趋势 cells) as marked by ganninvestor.com on a 14-ring square.
 REFERENCE = [
     (2, [1, 4, 6], [1]),
     (9, [1, 3, 5, 13, 17], [1, 5, 7]),
@@ -41,51 +39,42 @@ REFERENCE = [
 ]
 
 
-@pytest.mark.parametrize("pivot, site_up, down", REFERENCE)
-def test_downtrend_matches_site(pivot, site_up, down):
+@pytest.mark.parametrize("pivot, up, down", REFERENCE)
+def test_numbers_match_site(pivot, up, down):
+    assert trend_cells(pivot, 14, "up") == up
     assert trend_cells(pivot, 14, "down") == down
 
 
-def test_uptrend_worked_examples():
-    # 172 faces W: outward along its row (229, 294, 367) and up the N cross from 190.
-    assert trend_cells(172, 10, "up") == [190, 229, 249, 294, 316, 367, 391]
-    # 183 is the NW corner: out along the NW diagonal and up the NE diagonal from 197.
-    assert trend_cells(183, 10, "up") == [197, 241, 257, 307, 325, 381, 401]
-
-
-def test_up_is_above_and_down_is_below_for_every_pivot():
-    rings = 10
-    for n in range(2, (2 * rings + 1) ** 2 + 1):
-        up, down = trend_cells(n, rings, "up"), trend_cells(n, rings, "down")
-        assert all(m > n for m in up), n
-        assert all(m < n for m in down), n
-        # The uptrend starts right next to the pivot, one cell further out.
-        (x, y), (ox, oy) = coords(n), OUTWARD[facing(n)]
-        if max(abs(x + ox), abs(y + oy)) <= rings:
-            assert number_at(x + ox, y + oy) in up, n
-
-
-def test_paths_run_away_from_the_pivot():
+def test_lines_run_from_the_pivot():
+    # 172 faces W: line 1 is its row, running right across the square; line 2 is the
+    # N half of the centre column for an uptrend and the S half for a downtrend.
     line1, line2 = trend_paths(172, 10, "up")
-    assert line1 == [229, 294, 367] and line2 == [190, 249, 316, 391]
+    assert line1 == [123, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 110, 155, 208]
+    assert line2 == [46, 23, 8, 1, 4, 15, 34, 61, 96, 139, 190]
     line1, line2 = trend_paths(172, 10, "down")
     assert line1 == [123, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 110, 155]
     assert line2 == [116, 163]
 
 
-def test_dates_look_forward_for_both_trends():
-    # 172's downtrend line crosses the square: its later dates are on the far side
-    # (208, 269, 338, 415) and further down the S cross (218, 281, 352, 431).
-    assert trend_cells(172, 10, "down", after=True) == [208, 218, 269, 281, 338, 352, 415, 431]
-    line1, line2 = trend_paths(172, 10, "down", after=True)
-    assert line1 == [208, 269, 338, 415] and line2 == [218, 281, 352, 431]
+def test_dates_run_to_the_edge():
+    row = [123, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 110, 155, 208, 269, 338, 415]
+    assert trend_paths(172, 10, "up", full=True) == (
+        row,
+        [46, 23, 8, 1, 4, 15, 34, 61, 96, 139, 190, 249, 316, 391],
+    )
+    assert trend_paths(172, 10, "down", full=True) == (row, [116, 163, 218, 281, 352, 431])
     rings = 10
     for n in range(2, (2 * rings + 1) ** 2 + 1):
-        up = trend_cells(n, rings, "up", after=True)
-        down = trend_cells(n, rings, "down", after=True)
-        assert up == trend_cells(n, rings, "up"), n  # the uptrend already looks forward
-        assert all(m > n for m in up + down), n
-        assert not set(up) & set(down), n  # the two trends never share a date
+        for d in ("up", "down"):
+            full = trend_cells(n, rings, d, full=True)
+            # Uncut lines keep everything the site marks, plus the later cells it drops.
+            assert set(trend_cells(n, rings, d)) <= set(full), (n, d)
+            line1, _ = trend_paths(n, rings, d, full=True)
+            (x, y), (ox, oy) = coords(n), OUTWARD[facing(n)]
+            steps = 0
+            while max(abs(x - (steps + 1) * ox), abs(y - (steps + 1) * oy)) <= rings:
+                steps += 1
+            assert len(line1) == steps, (n, d)  # every cell to the edge, no gaps
 
 
 def test_corner_zone():
@@ -102,9 +91,8 @@ def test_facing():
 
 def test_centre_and_edges():
     assert trend_cells(1, 5, "up") == []
-    # Outer ring: nothing lies further out, so only later cells of that ring remain.
-    assert all(n > 120 for n in trend_cells(120, 5, "up"))
-    assert max(trend_cells(120, 5, "up"), default=121) <= 121
+    # Outer ring: the uptrend is clipped to the square instead of failing like the site.
+    assert max(trend_cells(120, 5, "up")) <= 121
 
 
 def test_bad_direction():

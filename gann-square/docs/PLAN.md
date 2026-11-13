@@ -36,27 +36,31 @@ converts the answer back to a date: (√n ± θ/180)² cells from the centre dat
 `gann time` lists the dates that land on the crosses and diagonals when a pivot
 date is the centre.
 
-**Trends (上升趋势 / 下降趋势).** These start from ganninvestor.com's trend
-marking, which I worked out by clicking every cell of its square headlessly, with
-one deliberate change: up means bigger numbers, down means smaller.
+**Trends (上升趋势 / 下降趋势).** These reproduce the marking on ganninvestor.com,
+which I worked out by clicking every cell of its square headlessly:
 
 1. The pivot faces a diagonal if it sits within a few cells of a corner (1 cell
    on rings 2–5, 2 on rings 6–7, 3 from ring 8 out). Otherwise it faces its side.
-2. Downtrend, the same cells as the site: line 1 from the pivot straight inward
-   across the square, plus the centre line at right angles to it, from where they
-   cross, towards the side 90° counter-clockwise. Cells below the pivot are kept.
-3. Uptrend: line 1 from the pivot straight outward to the edge of the square, plus
-   the same centre line towards the side 90° clockwise (the way the numbers grow).
-   Cells above the pivot are kept.
+2. Line 1 runs from the pivot straight inward, across the square.
+3. Line 2 is the centre line at right angles to it, taken from where they cross,
+   towards the side 90° clockwise of the pivot for an uptrend (the way the numbers
+   grow) or 90° counter-clockwise for a downtrend.
+4. On a square of numbers the lines are cut where the site cuts them: an uptrend
+   keeps cells up to one full turn past the pivot (n + 8k), a downtrend the cells
+   numbered below the pivot.
 
-4. On a square of dates, both trends keep only dates after the pivot, because time
-   only runs forward and the useful answer is the next support or resistance date.
-   The uptrend's cells already are; the downtrend shows where its line reaches the
-   far side of the square and further out along its centre line.
+On a 14-ring and a 30-ring square this matches the site cell for cell, except
+for cells 119 and 222, where the site's hand-written cases are lopsided. The
+site also fails on uptrends from its outermost ring; here they are clipped to
+the square.
 
-The site's own 上升趋势 also runs inward and keeps everything up to one turn past
-the pivot, so about 90% of what it marks is below the pivot. That read as
-reversed, so the uptrend here only marks cells above the pivot.
+On a square of dates the lines are not cut: both run on to the edge of the
+square. Time only runs forward, so the dates that matter are the ones after the
+pivot, and most of them lie past the site's cut-off. The page draws those solid
+and the earlier part of each line pale.
+
+(An earlier version ran the uptrend outward from the pivot and kept only the cells
+above it. Next to the site's straight lines it read as odd, so it was dropped.)
 
 ## Layout
 

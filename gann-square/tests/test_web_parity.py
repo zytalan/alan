@@ -15,7 +15,7 @@ from gannsquare import levels as lv
 from gannsquare import spiral
 from gannsquare.render import page_fragment
 from gannsquare.square import Square, cell_for_date, date_at, decimals_of, long_date, short_date
-from gannsquare.trend import corner_zone, facing, trend_cells
+from gannsquare.trend import corner_zone, facing, trend_cells, trend_paths
 
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="needs Node.js")
@@ -146,7 +146,7 @@ def test_trend_paths_cover_trend_cells():
         assert sorted(set(paths["line1"] + paths["line2"])) == trend_cells(n, rings, d)
 
 
-def test_dated_trends_match():
+def test_uncut_trends_match():
     cases = [
         (n, rings, d, True)
         for rings in (3, 10)
@@ -154,4 +154,12 @@ def test_dated_trends_match():
         for d in ("up", "down")
     ]
     got = run_js([["trendCells", list(c)] for c in cases])
-    assert got == [trend_cells(n, r, d, after=a) for n, r, d, a in cases]
+    assert got == [trend_cells(n, r, d, full=f) for n, r, d, f in cases]
+
+
+def test_uncut_trend_paths_match():
+    cases = [(n, 10, d, True) for n in range(2, 442, 9) for d in ("up", "down")]
+    got = run_js([["trendPaths", list(c)] for c in cases])
+    for (n, r, d, f), paths in zip(cases, got):
+        line1, line2 = trend_paths(n, r, d, full=f)
+        assert paths["line1"] == line1 and paths["line2"] == line2
